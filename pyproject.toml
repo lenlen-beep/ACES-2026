@@ -1,0 +1,20 @@
+[project]
+name = "ACES-2026"
+version = "0.1.0"
+description = " "
+authors = [
+    { name=" ", email=" " }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy-2.4.4",
+    "pandas-3.0.2"
+]
+
+[project.optional-dependencies]
+dev = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
