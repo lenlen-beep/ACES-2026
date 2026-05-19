@@ -1,1 +1,3 @@
-.pdf
+*.pdf
+*.xlsx
+*.DS_Store
