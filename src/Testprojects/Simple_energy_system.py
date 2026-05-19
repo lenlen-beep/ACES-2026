@@ -39,11 +39,8 @@ df_load['Datum'] = pd.to_datetime(df_load['Datum'])
 # Zeitindex
 T = range(len(df_load))
 
-demand_scale = 0.08
-
 # Nachfrage in einzelnen df
-demand = df_load['Wärmeleistung in MW'].values * demand_scale #skaliert
-heat_supply = demand.sum()
+demand = df_load['Wärmeleistung in MW'].values 
 
 # Strompreis (synthetisch)
 price = {t: 50 + 20*np.sin(t/24) for t in T}
@@ -63,7 +60,7 @@ model = pyo.ConcreteModel()
 model.T = pyo.Set(initialize=T)
 
 
-# --- Variablen ---
+# Variablen
 
 # Allgemein
 #model.x = pyo.Var(model.T, bounds=(min, max)) -- Wertebereich
@@ -79,7 +76,7 @@ model.discharge = pyo.Var(model.T, bounds=(0, charge_max))
 model.SOC = pyo.Var(model.T, bounds=(0, storage_cap))
 
 
-# --- Zielfunktion (Bewertungsregel) ---
+# Zielfunktion (Bewertungsregel)
 
 # Allgemein
 #def name(model):
@@ -93,6 +90,7 @@ def obj_rule(m):
     return sum(price[t] * m.P_wp[t] for t in m.T)
 
 model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
+
 
 # Constraints
 
@@ -120,7 +118,6 @@ def storage_rule(m, t):
         return m.SOC[t] == 0
     # SOC immer gleich dem SOC aus vorherigen Zeitschritt + charge oder - discharge
     return m.SOC[t] == m.SOC[t-1] + eta*m.charge[t] - (1/eta)*m.discharge[t]
-#TODO: 
 
 model.storage = pyo.Constraint(model.T, rule=storage_rule)
 
@@ -133,9 +130,7 @@ P_wp_res = np.array([pyo.value(model.P_wp[t]) for t in T])
 charge_res = np.array([pyo.value(model.charge[t]) for t in T])
 discharge_res = np.array([pyo.value(model.discharge[t]) for t in T])
 demand = np.array(demand)
-storage_cap_res = pyo.value(model.storage_capacity)
 
-print(f'Die Speichergröße beträgt {storage_cap_res} Liter bzw. {storage_cap_res * cp_W * delta_T /(3600*1000)} MWh')
 # Dauerlinie sortieren
 sorted_idx = np.argsort(-demand)
 
