@@ -124,19 +124,6 @@ def storage_rule(m, t):
 
 model.storage = pyo.Constraint(model.T, rule=storage_rule)
 
-def soc_capacity_limit(m, t):
-    return m.SOC[t] <= m.storage_capacity * cp_W * delta_T / 3600
-
-model.soc_capacity_limit = pyo.Constraint(model.T, rule=soc_capacity_limit)
-
-def charge_power_limit(m, t):
-    return m.charge[t] <= 0.25 * m.storage_capacity * cp_W * delta_T / 3600 #kW --> aus m_dot_max und Netzparametern berechnen
-
-def discharge_power_limit(m, t):
-    return m.discharge[t] <= 0.25 * m.storage_capacity * cp_W * delta_T / 3600
-
-model.charge_power_limit = pyo.Constraint(model.T, rule=charge_power_limit)
-model.discharge_power_limit = pyo.Constraint(model.T, rule=discharge_power_limit)
 # Solver
 solver = pyo.SolverFactory('glpk')
 results = solver.solve(model)
