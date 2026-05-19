@@ -73,14 +73,10 @@ model.T = pyo.Set(initialize=T)
 #model.x = pyo.Var(model.T, within=pyo.Integers) -- ganzzahlig
 #model.x = pyo.Var(model.T, within=pyo.Binary) -- an/aus
 
-# Wärmepumpe
-model.P_wp = pyo.Var(model.T, bounds=(0, Pth_wp_max))
-
-# Speicher
-model.charge = pyo.Var(model.T, bounds=(0, None)) 
-model.discharge = pyo.Var(model.T, bounds=(0, None))
-model.SOC = pyo.Var(model.T, bounds=(0, None))
-model.storage_capacity = pyo.Var(bounds=(0, None), initialize=storage_cap) #Liter
+model.P_wp = pyo.Var(model.T, bounds=(0, P_wp_max))
+model.charge = pyo.Var(model.T, bounds=(0, charge_max))
+model.discharge = pyo.Var(model.T, bounds=(0, charge_max))
+model.SOC = pyo.Var(model.T, bounds=(0, storage_cap))
 
 
 # --- Zielfunktion (Bewertungsregel) ---
