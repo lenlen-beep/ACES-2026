@@ -90,7 +90,7 @@ model.SOC = pyo.Var(model.T, bounds=(0, storage_cap))
 #  hier: Stromkosten minimieren
 def obj_rule(m):
     # Preis Strom [t] * Leistung WP [t]
-    return sum(price[t] * (m.P_wp[t]/COP) for t in m.T)
+    return sum(price[t] * m.P_wp[t] for t in m.T)
 
 model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
 
@@ -109,7 +109,7 @@ model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
 # Wärmebilanz
 def heat_balance(m, t):
     #Verfügbare Wärmeleistung (COP*P_WP + P_SP) == Benötigte Wärmeleistung (Last + P_SP)
-    return m.P_wp[t] + m.discharge[t] == demand[t] + m.charge[t]
+    return COP * m.P_wp[t] + m.discharge[t] == demand[t] + m.charge[t]
 
 model.heat_balance = pyo.Constraint(model.T, rule=heat_balance)
 
@@ -153,7 +153,7 @@ print(f'Die Speichergröße beträgt {storage_cap_res} Liter bzw. {storage_cap_r
 sorted_idx = np.argsort(-demand)
 
 demand_sorted = demand[sorted_idx]
-wp_sorted = (P_wp_res)[sorted_idx]
+wp_sorted = (COP * P_wp_res)[sorted_idx]
 discharge_sorted = discharge_res[sorted_idx]
 
 # Plot
@@ -183,7 +183,7 @@ plt.show()
 
 # Dauerlinie, Last WP + Speicher
 plt.figure()
-plt.plot(P_wp_res, label="Wärmepumpe")
+plt.plot(COP * P_wp_res, label="Wärmepumpe")
 plt.plot(discharge_res, label="Speicher Entladung")
 plt.plot(demand, label="Wärmebedarf")
 plt.xlabel("Zeit [h]")
