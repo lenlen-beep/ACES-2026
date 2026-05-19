@@ -48,15 +48,12 @@ heat_supply = demand.sum()
 # Strompreis (synthetisch)
 price = {t: 50 + 20*np.sin(t/24) for t in T}
 
+# Parameter
 COP = 3.5
-Pth_wp_max = 30
-
-# --- Netzparameter --> max 95 °C für einfache Pufferspeicher (Constraint!) ---
-VLT = 80 #°C
-RLT = 55 #°C
-cp_W = 4.187 #kJ/kgK
-rho_W = 1000 #kg/m3
-delta_T = VLT - RLT #K
+P_wp_max = 150
+storage_cap = 500
+charge_max = 80
+eta = 0.9
 
 
 # Modell
