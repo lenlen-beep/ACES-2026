@@ -28,23 +28,64 @@ Methodik:
 """
 
 
+#-------------------------------------------------------------------------
+# Einlesen Fernwärmedaten (Flensburg 2017, dummy)
+#-------------------------------------------------------------------------
+
 load_file  = r"src/Testprojects/district_heating_data_Flensburg_2017.xlsx"
-df_load = pd.read_excel(load_file, skiprows=1, header=0)
+df_load = pd.read_excel(load_file, skiprows=0, header=0)
 
 df_load.columns = ['Datum', 'Wärmeleistung in MW']
 df_load['Datum'] = pd.to_datetime(df_load['Datum'])
 
 T = range(len(df_load))
 
-demand_scale = 0.001 # da Fernwärmedaten etwas groß
+demand_scale = 0.01 # da Fernwärmedaten etwas groß
 
 # Nachfrage in einzelnen df
 demand = df_load['Wärmeleistung in MW'].values * demand_scale #skaliert
 heat_supply = demand.sum()
 
-# Strompreis (synthetisch)
-price = {t: 500 + 150*np.sin(t/24) for t in T}
 
+#-------------------------------------------------------------------------
+# Einlesen Strompreise (Großhandelsstrompreise 2024, dummy)
+#-------------------------------------------------------------------------
+
+price_file  = r"src/Testprojects/Gro_handelspreise_202401010000_202501010000_Stunde.xlsx"
+df_price = pd.read_excel(price_file, skiprows=9, header=0, usecols=['Datum von', 'Deutschland/Luxemburg [€/MWh]'])
+
+df_price.columns = ['Datum von', 'Deutschland/Luxemburg [€/MWh]']
+
+# Spalte umbenennen
+df_price.rename(columns={'Datum von': 'Datum'}, inplace=True)
+
+df_price['Datum'] = pd.to_datetime(
+    df_price['Datum'],
+    format='%d.%m.%Y %H:%M'
+)
+
+# Spalte umbenennen
+df_price.rename(columns={'Datum von': 'Datum'}, inplace=True)
+
+# 29.02. entfernen (2024 Schaltjahr)
+df_price = df_price[
+    ~((df_price['Datum'].dt.month == 2) & (df_price['Datum'].dt.day == 29))
+]
+
+# Daten löschen (29.03.2024, 31.03.2024), da Zeitumstellung (--> 2 Uhr fehlt und unterschiedlicher Tag)
+df_price = df_price[
+    ~((df_price['Datum'].dt.month == 3) & (df_price['Datum'].dt.day == 26) & (df_price['Datum'].dt.hour == 2))
+]
+df_load = df_load[
+    ~((df_load['Datum'].dt.month == 3) & (df_load['Datum'].dt.day == 31) & (df_load['Datum'].dt.hour == 2))
+]
+
+price = df_price['Deutschland/Luxemburg [€/MWh]'].values 
+
+
+#-------------------------------------------------------------------------
+# Anlagensparameter
+#-------------------------------------------------------------------------
 
 # --- Zinsrechung für Investitionen ---
 
@@ -69,16 +110,19 @@ if VLT > 95:
 
 # --- Parameter Speicher ---
 
-storage_cap = 500 #L --> initial condition Speicherkapazität
+storage_cap = 500 #m3 --> initial condition Speicherkapazität
 max_charge_rate = max_discharge_rate = 0.25 # % der Speicherkapazität pro Zeitschritt (z.B. 0.25 = 25% der Kapazität kann pro Stunde geladen werden)
-p_loss = 1.67/24 #kWh Wärmeverlust --> Technikkatalog MITTELWERT
+p_loss = 1.67/(24*1000) #MWh Wärmeverlust --> Technikkatalog MITTELWERT --> PRÜFEN
 SOC_init = 0.2 # % initialer Ladezustand (Anfang u. Ende)
-storage_invest_offset = 196675 #€ --> aus Technikkatalog (Offset)
+
+# Investitionskosten Speicher (linearisiert: Offset + spezifische Kosten * Kapazität) --> umgerechnet auf jährliche Kosten mit Annuitätenfaktor
+# --> Langfristig vielleicht Abschätzung (größe) und entsprechende Gerade nehmen!
+storage_invest_offset = 196675 #€ --> aus Technikkatalog (Offset) 
 storage_specific_cost = 86.139/1000 #€/L --> aus Technikkatalog (linearisiert)
 
-# Pumpe
+# Pumpe (Penalty für nicht gleichzeitges laden/entladen)
 g = 9.81 #m/s2
-h = 5 #m Förderhöhe
+h = 5 #m Förderhöhe (Schätzung)
 eta_p = 0.9 #Pumpenwirkungsgrad
 P_pump = (g * h) / (eta_p * cp_W*1000 *delta_T) #MW --> aus Netzparametern berechnen VAR
 
@@ -86,8 +130,12 @@ P_pump = (g * h) / (eta_p * cp_W*1000 *delta_T) #MW --> aus Netzparametern berec
 # --- Parameter WP ---
 
 COP = 3.5
-Pth_wp_max = 10 #MW
+Pth_wp_max = 3.5 #MW
 
+
+#------------------------------------------------------------------------
+# Pyomo-Modellierung
+#------------------------------------------------------------------------
 
 # Modell
 model = pyo.ConcreteModel()
@@ -104,8 +152,8 @@ model.P_wp = pyo.Var(model.T, bounds=(0, Pth_wp_max)) #MW
 # Speicher
 model.charge = pyo.Var(model.T, bounds=(0, None)) #MW
 model.discharge = pyo.Var(model.T, bounds=(0, None)) #MW
-model.SOC = pyo.Var(model.T, bounds=(0, None)) #MWh
-model.storage_capacity = pyo.Var(bounds=(0, None), initialize=storage_cap) #Liter
+model.SOC = pyo.Var(model.T, bounds=(0, None)) #kWh
+model.storage_capacity = pyo.Var(bounds=(0, None), initialize=storage_cap) #m3
 
 
 # --- Zielfunktion (Bewertungsregel) ---
@@ -129,23 +177,23 @@ model.heat_balance = pyo.Constraint(model.T, rule=heat_balance)
 
 def storage_volume_to_MWh(vol_L):
     # vol_L: liters
-    # vol_m3 = L / 1000
+    # vol_m3 = L 
     # mass_kg = vol_m3 * rho_W
     # energy_kJ = mass_kg * cp_W * delta_T
     # energy_kWh = energy_kJ / 3600
     # energy_MWh = energy_kWh / 1000
-    return (vol_L / 1000.0) * rho_W * cp_W * delta_T / (3600.0*1000.0)
+    return (vol_L) * rho_W * cp_W * delta_T / (3600.0) #MWh
 
 # Speicher-Dynamik
 def storage_rule(m, t):
     storage_MWh = storage_volume_to_MWh(m.storage_capacity)
-    p_loss_MWh = p_loss / 1000 #kWh --> MWh
+    p_loss_MWh = p_loss #kWh --> MWh
     if t == 0:
         #return m.SOC[t] == 0
-        return m.SOC[t] == SOC_init * storage_MWh #x% initialer Ladezustand (Anfang)
+        return m.SOC[t] == 0 #SOC_init * storage_MWh #x% initialer Ladezustand (Anfang)
     
     elif t == T[-1]:
-        return m.SOC[t] == SOC_init * storage_MWh #x% initialer Ladezustand (Ende)
+        return m.SOC[t] == 0 #SOC_init * storage_MWh #x% initialer Ladezustand (Ende)
     
     # SOC immer gleich dem SOC aus vorherigen Zeitschritt + charge oder - discharge
     return m.SOC[t] == m.SOC[t-1] + m.charge[t] - m.discharge[t] -p_loss_MWh
@@ -160,16 +208,30 @@ def soc_capacity_limit(m, t):
 
 model.soc_capacity_limit = pyo.Constraint(model.T, rule=soc_capacity_limit)
 
-def charge_power_limit(m, t):
+def charge_power_limit_storage(m, t):
     storage_MWh = storage_volume_to_MWh(m.storage_capacity)
-    return m.charge[t] <= max_charge_rate * storage_MWh 
+
+    return m.charge[t] <= max_charge_rate * storage_MWh
+
+def charge_power_limit_hp(m, t):
+    return m.charge[t] <= Pth_wp_max
+
+def negative_price_discharge_restrict(m, t):
+    if price[t] < 0:
+        return m.discharge[t] == 0 # Bei negativen Preisen, entladen verboten.
+    else:
+        return pyo.Constraint.Skip
+    
+model.negative_price_discharge_restrict = pyo.Constraint(model.T, rule=negative_price_discharge_restrict)
+
 
 def discharge_power_limit(m, t):
     storage_MWh = storage_volume_to_MWh(m.storage_capacity)
     return m.discharge[t] <= max_discharge_rate * storage_MWh
 
-model.charge_power_limit = pyo.Constraint(model.T, rule=charge_power_limit)
-model.discharge_power_limit = pyo.Constraint(model.T, rule=discharge_power_limit)
+model.charge_power_limit_storage = pyo.Constraint(model.T, rule=charge_power_limit_storage)
+model.charge_power_limit_hp = pyo.Constraint(model.T, rule=charge_power_limit_hp)
+
 # Solver
 solver = pyo.SolverFactory('glpk')
 results = solver.solve(model)
@@ -182,7 +244,7 @@ SOC_res = np.array([pyo.value(model.SOC[t]) for t in T])
 demand = np.array(demand)
 storage_cap_res = pyo.value(model.storage_capacity)
 
-print(f'Die Speichergröße beträgt {storage_cap_res} Liter bzw. {storage_cap_res * cp_W * delta_T /(3600*1000)} MWh')
+print(f'Die Speichergröße beträgt {storage_cap_res} m3 bzw. {storage_cap_res * cp_W * delta_T /(3600)} kWh')
 
 
 # --- PLOTS ---
@@ -264,22 +326,3 @@ plt.legend()
 plt.grid()
 plt.show()
 
-price_arr = np.array([price[t] for t in T])
-
-plt.figure()
-plt.plot(price_arr, label="Strompreis")
-plt.xlabel("Zeit [h]")
-plt.ylabel("Preis [EUR/MWh]")
-plt.title("Strompreis: Zeitreihe")
-plt.grid(True)
-plt.legend()
-
-plt.figure()
-price_sorted = np.sort(price_arr)[::-1]  # absteigend für Dauerlinie
-plt.plot(price_sorted, label="Strompreis (Dauerlinie)")
-plt.xlabel("Stunden (sortiert)")
-plt.ylabel("Preis [EUR/MWh]")
-plt.title("Strompreis: Dauerlinie")
-plt.grid(True)
-plt.legend()
-plt.show()
