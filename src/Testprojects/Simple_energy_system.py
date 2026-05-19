@@ -48,31 +48,6 @@ heat_supply = demand.sum()
 # Strompreis (synthetisch)
 price = {t: 50 + 20*np.sin(t/24) for t in T}
 
-# --- Zinsrechung für Investitionen ---
-"""
-# Ammoritsationszeitraum
-n = 20 #a
-
-#Zins
-r = 0.05
-annuity_factor = r * (1+r)**n / ((1+r)**n - 1)
-"""
-
-# --- Parameter Speicher ---
-
-storage_cap = 500 #--> initial condition in L
-eta = 0.9 # Wirkungsgrad Speicher --> Ziel: in kWh/24h Wärmeverlust umwandeln (Technikkatalog)
-
-"""
-m_dot_max = 0.25 * storage_vol*3600 #kg/h --> 4h Ladezeit, um Speicher zu füllen. lockerer Roichtwert, !Keine! Quelle VAR
-charge_max = m_dot_max * cp_W * delta_T / 3600 #kW --> aus m_dot_max und Netzparametern berechnen VAR
-storage_cap = storage_vol * cp_W * delta_T #kWh --> aus storage_vol und Netzparametern berechnen VAR
-specific_inv_storage = 2.6 #Eur/L --> Technikkatalog Wärmeplanung MITTELWERT
-inv_storage = specific_inv_storage * storage_vol #Eur --> aus specific_inv_storage und storage_vol berechnen VAR
-"""
-
-# --- Parameter WP ---
-
 COP = 3.5
 Pth_wp_max = 30
 
