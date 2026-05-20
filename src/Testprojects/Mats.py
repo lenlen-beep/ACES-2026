@@ -22,6 +22,8 @@ Methodik:
 - Optimierung: Pyomo (lineares Optimierungsmodell)
 - Ziel: Minimierung der Stromkosten
 - Nebenbedingungen: Wärmebilanz + Speicherdynamik
+
+test 
 """
 
 load_file  = r"src/Testprojects/district_heating_data_Flensburg_2017.xlsx"
