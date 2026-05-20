@@ -6,7 +6,6 @@ from datetime import datetime
 import meteostat as ms
 from pathlib import Path
 
-
 def create_mean_german_building_loads(rated_load):
     # dena Gebäudereport 2024 (Wohngebäudebestand) 
     # verwendete Aufteileung: 66% EFH, 16% ZFH, 15% MFH
@@ -17,14 +16,13 @@ def create_mean_german_building_loads(rated_load):
 
     return load_EFH, load_MFH
 
-x=1111
 
 def load_temperature_data(
     lat,
     lon,
     year,
     reload_data=False,
-    cache_dir="weather_cache"
+    cache_dir="src/ACES-2026/Data/weather_cache"
 ):
 
     # --------------------------------------------------
