@@ -1,14 +1,21 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed May 20 10:46:43 2026
+
+@author: matsbeyer
+"""
+
 import pandas as pd
 import pyomo.environ as pyo
 import numpy as np
 import matplotlib.pyplot as plt
 
 """
-Optimierung eines Fernwärmesystems mit Wärmepumpe, Wärmespeicher und Gaskessel.
+Optimierung eines Fernwärmesystems mit Wärmepumpe und Wärmespeicher.
 
 Das Modell minimiert die Stromkosten einer Wärmepumpe unter Einhaltung der
-Wärmeversorgung. Ein Speicher ermöglicht eine zeitliche Verschiebung. 
-Gaskessel können im Fernwärmesystem als Spitzenlast- und Backup-Erzeuger eingesetzt werden.
+Wärmeversorgung. Ein Speicher ermöglicht eine zeitliche Verschiebung.
 
 Methodik:
 - Daten: Zeitreihe der Wärmeleistung (Excel)
@@ -53,11 +60,6 @@ storage_cap = 500
 charge_max = 80
 eta = 0.9
 
-# Gaskessel
-eta_gb   = 0.92   # Wirkungsgrad
-P_gb_max = 100    # Max. Wärmeleistung [MW] – als Spitzenlasterzeuger kleiner als WP
-gas_price = 30    # Gaspreis [€/MWh_th Brennstoff]
-
 
 # Modell
 model = pyo.ConcreteModel()
@@ -81,8 +83,6 @@ model.charge = pyo.Var(model.T, bounds=(0, charge_max))
 model.discharge = pyo.Var(model.T, bounds=(0, charge_max))
 model.SOC = pyo.Var(model.T, bounds=(0, storage_cap))
 
-# Gaskessel
-model.Q_gb = pyo.Var(model.T, bounds=(0, P_gb_max))
 
 # Zielfunktion (Bewertungsregel)
 
@@ -92,11 +92,10 @@ model.Q_gb = pyo.Var(model.T, bounds=(0, P_gb_max))
 #model.obj = pyo.Objective(rule=name, sense=pyo.minimize)
 #                                          =pyo.maximize)
 
-#  Stromkosten minimieren
+#  hier: Stromkosten minimieren
 def obj_rule(m):
-    stromkosten = sum(price[t] * m.P_wp[t] for t in m.T)
-    gaskosten   = sum((gas_price / eta_gb) * m.Q_gb[t] for t in m.T)
-    return stromkosten + gaskosten
+    # Preis Strom [t] * Leistung WP [t]
+    return sum(price[t] * m.P_wp[t] for t in m.T)
 
 model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
 
@@ -115,7 +114,8 @@ model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
 
 # Wärmebilanz
 def heat_balance(m, t):
-    return COP * m.P_wp[t] + m.discharge[t] + m.Q_gb[t] == demand[t] + m.charge[t]
+    #Verfügbare Wärmeleistung (COP*P_WP + P_SP) == Benötigte Wärmeleistung (Last + P_SP)
+    return COP * m.P_wp[t] + m.discharge[t] == demand[t] + m.charge[t]
 
 model.heat_balance = pyo.Constraint(model.T, rule=heat_balance)
 
@@ -137,11 +137,7 @@ results = solver.solve(model)
 P_wp_res = np.array([pyo.value(model.P_wp[t]) for t in T])
 charge_res = np.array([pyo.value(model.charge[t]) for t in T])
 discharge_res = np.array([pyo.value(model.discharge[t]) for t in T])
-
-Q_gb_res = np.array([pyo.value(model.Q_gb[t]) for t in T])
-
-print(f'Gaskessel Gesamterzeugung: {Q_gb_res.sum():.2f} MWh')
-print(f'Gaskessel Volllaststunden: {(Q_gb_res > 0.01 * P_gb_max).sum()} h')
+demand = np.array(demand)
 
 # Dauerlinie sortieren
 sorted_idx = np.argsort(-demand)
@@ -149,7 +145,6 @@ sorted_idx = np.argsort(-demand)
 demand_sorted = demand[sorted_idx]
 wp_sorted = (COP * P_wp_res)[sorted_idx]
 discharge_sorted = discharge_res[sorted_idx]
-gb_sorted = Q_gb_res[sorted_idx]
 
 # Plot
 
@@ -158,7 +153,6 @@ plt.figure()
 plt.plot(demand_sorted, label="Wärmebedarf")
 plt.plot(wp_sorted, label="Wärmepumpe")
 plt.plot(discharge_sorted, label="Speicher Entladung")
-plt.plot(gb_sorted, label="Gaskessel")
 plt.xlabel("Stunden (sortiert)")
 plt.ylabel("Leistung [MW]")
 plt.title("Dauerlinie mit Einsatz von WP und Speicher")
