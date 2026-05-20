@@ -17,6 +17,7 @@ def create_mean_german_building_loads(rated_load):
 
     return load_EFH, load_MFH
 
+x=1111
 
 def load_temperature_data(
     lat,
