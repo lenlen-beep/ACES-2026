@@ -1,3 +1,5 @@
 *.pdf
 *.xlsx
 *.DS_Store
+*.pyc
+*.csv
