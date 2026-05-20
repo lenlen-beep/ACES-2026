@@ -28,7 +28,7 @@ def load_temperature_data(
     lon,
     year,
     reload_data=False,
-    cache_dir="weather_cache"
+    cache_dir="Testprojects/weather_cache"
 ):
 
     # --------------------------------------------------
