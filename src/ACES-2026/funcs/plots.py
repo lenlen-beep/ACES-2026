@@ -122,7 +122,7 @@ def plot_charge_discharge_process(charge_res, discharge_res, SOC_res, storage_ca
 
 
 def plot_load_w_components(P_wp_res, discharge_res, demand, show_plot=True):
-
+    demand = np.array(demand)
     # Dauerlinie, Last WP + Speicher
     plt.figure()
     plt.plot(P_wp_res, label="Wärmepumpe")
