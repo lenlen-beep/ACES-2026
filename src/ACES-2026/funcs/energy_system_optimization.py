@@ -33,25 +33,25 @@ Methodik:
 parameters = read_parameters("src/ACES-2026/parameters.yaml")
 
 #Netzparameter
-cp_W = parameters["Net_parameters"]["specific_heat_capacity"]
-rho_W = parameters["Net_parameters"]["density"]
+cp_w = parameters["Net_parameters"]["specific_heat_capacity"]
+rho_w = parameters["Net_parameters"]["density"]
 s_temp = parameters["Net_parameters"]["supply_temperature"]
 delta_T = parameters["Net_parameters"]["delta_T"]
 
 #Investitionsparameter
 r = parameters["Invest_parameters"]["interest_rate"]
 n = parameters["Invest_parameters"]["lifetime_years"]
-storage_invest_offset = parameters["System_parameters"]["Storage"]["invest_offset"]
-storage_specific_cost = parameters["System_parameters"]["Storage"]["specific_cost"]
+storage_invest_offset = parameters["System_parameters"]["Storage"]["invest_offset_storage"]
+storage_specific_cost = parameters["System_parameters"]["Storage"]["specific_invest_storage"]
 
 annuity_factor = r * (1+r)**n / ((1+r)**n - 1)
 
 #Pumpenparameter
 g = parameters["System_parameters"]["Pump"]["gravity"]
 h = parameters["System_parameters"]["Pump"]["del_height"]
-eta_p = parameters["System_parameters"]["Pump"]["eta_pump"]
+eta_pump = parameters["System_parameters"]["Pump"]["eta_pump"]
 
-P_pump = (g * h) / (eta_p * cp_W*1000 *delta_T) #MW
+P_pump = (g * h) / (eta_pump * cp_w*1000 *delta_T) #MW
 
 #Wärmepumpenparameter
 Pth_wp_max = parameters["System_parameters"]["HP"]["hp_thermal_power_max"]
@@ -60,7 +60,7 @@ COP = parameters["System_parameters"]["HP"]["COP"]
 #Speicherparameter
 max_charge_rate = parameters["System_parameters"]["Storage"]["max_charge_rate"]
 max_discharge_rate = parameters["System_parameters"]["Storage"]["max_discharge_rate"]
-p_loss = parameters["System_parameters"]["Storage"]["p_loss"]
+Q_loss = parameters["System_parameters"]["Storage"]["Q_loss"]
 SOC_init = parameters["System_parameters"]["Storage"]["SOC_init"]
 storage_cap = parameters["System_parameters"]["Storage"]["initial_storage_capacity"]
 
@@ -70,11 +70,11 @@ def storage_volume_to_MWh(vol_m3):
         # energy_kJ = mass_kg * cp_W * delta_T
         # energy_kWh = energy_kJ / 3600
         # energy_MWh = energy_kWh / 1000
-    return (vol_m3) * rho_W * cp_W * delta_T / (3600.0) #MWh
+    return (vol_m3) * rho_w * cp_w * delta_T / (3600.0) #MWh
 
 
 def optimize_energy_system(demand, price):
-    
+
     demand = demand.values
 
     T = range(len(demand))
@@ -141,7 +141,7 @@ def optimize_energy_system(demand, price):
         #Restliche Zeitschritte: SOC immer gleich dem SOC aus vorherigen Zeitschritt 
         # + charge oder - discharge - Verluste
         storage_MWh = storage_volume_to_MWh(storage_cap)
-        p_loss_MWh = p_loss
+        Q_loss_MWh = Q_loss
         
         if t == 0:
             return m.SOC[t] == SOC_init * storage_MWh #x% initialer Ladezustand (Anfang)
@@ -149,7 +149,7 @@ def optimize_energy_system(demand, price):
         elif t == T[-1]:
             return m.SOC[t] == SOC_init * storage_MWh #x% initialer Ladezustand (Ende)
         
-        return m.SOC[t] == m.SOC[t-1] + m.charge[t] - m.discharge[t] -p_loss_MWh
+        return m.SOC[t] == m.SOC[t-1] + m.charge[t] - m.discharge[t] -Q_loss_MWh
 
     model.storage = pyo.Constraint(model.T, rule=storage_rule)
 
@@ -212,7 +212,7 @@ def optimize_energy_system(demand, price):
     SOC_res = np.array([pyo.value(model.SOC[t]) for t in T])
     storage_cap_res = pyo.value(model.storage_capacity)
 
-    print(f'Die Speichergröße beträgt {storage_cap_res} m3 bzw. {storage_cap_res * cp_W * delta_T /(3600)} kWh')
+    print(f'Die Speichergröße beträgt {storage_cap_res} m3 bzw. {storage_cap_res * cp_w * delta_T /(3600)} kWh')
 
     return results, P_wp_res, charge_res, discharge_res, SOC_res, storage_cap_res
 
