@@ -1,3 +1,40 @@
+"""
+Dispatch Optimization: Gas Boiler + Heat Pump for a Small Municipality
+=======================================================================
+
+This script solves a cost-minimizing dispatch optimization problem for a
+small district heating system (~2,000 inhabitants, ~2.6 % of Flensburg's
+total heat demand) served by two complementary technologies: Gas Boiler and Heat Pump  
+
+The optimization is formulated as a Linear Program (LP) using the Pyomo
+modelling framework and solved with the open-source HiGHS solver. For each
+of the 8,759 hours of the year the model determines the cost-optimal split
+of heat production between the two plants, subject to:
+
+  1. Heat balance  – combined output must always meet the hourly demand.
+  2. Capacity limits – each plant is bounded by its installed capacity.
+  3. Boiler lock   – the gas boiler is only permitted to operate when it
+                     produces heat more cheaply than the heat pump, OR when
+                     heat pump capacity alone is insufficient to cover demand.
+
+Input data
+----------
+  - Hourly heat demand        : Flensburg 2017, scaled by factor 0.026
+                                (source: Flensburg2017_Municipality_scale026.xlsx)
+  - Hourly electricity prices : Germany / Luxembourg day-ahead market, 2024
+                                (source: Gro_handelspreise_202401010000_202501010000_Stunde.xlsx)
+  - Monthly gas prices        : Germany 2017
+                                (source: Gas_Prices_Germany_2017.xlsx)
+
+Outputs
+-------
+  - Console summary  : total annual costs (€) and operating hours per mode
+  - dispatch_optimization_result.png  : full-year dispatch, price signals,
+                                        and hourly operating-mode chart
+  - dispatch_analysis.png             : monthly cost breakdown, monthly
+                                        operating hours, and load duration curve
+"""
+
 import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
@@ -6,7 +43,7 @@ from matplotlib.patches import Patch
 
 
 # ─────────────────────────────────────────────
-# 1. Load heat demand (Flensburg 2017, hourly) scaled to 2.6 % (peak ~9 MW) --> 2000 people municipality
+# 1. Load demand (Flensburg 2017, hourly) scaled to 2.6 % (peak ~9 MW) --> 2000 people municipality
 # ─────────────────────────────────────────────
 dem_df  = pd.read_excel("Flensburg2017_Municipality_scale026.xlsx", sheet_name="Hourly Data")
 demand  = dem_df["Q_Municipality (MW)"].values          # MW_th
@@ -21,11 +58,11 @@ el_df       = pd.read_excel("Gro_handelspreise_202401010000_202501010000_Stunde.
 el_price    = el_df["Deutschland/Luxemburg [€/MWh]"].values[:N]   # €/MWh_el
 
 # ─────────────────────────────────────────────
-# 3. Load gas prices (Germany 2017, monthly → hourly)
+# 3. Load gas prices (Germany 2017, monthly → hourly) (daily prices not available for free market)
 # ─────────────────────────────────────────────
 gas_df      = pd.read_excel("Gas_Prices_Germany_2017.xlsx", skiprows=2)
 gas_monthly = {i + 1: row["End Price [€/MWh]"] for i, row in gas_df.iloc[:12].iterrows()}
-gas_price_fuel = np.array([gas_monthly[m] for m in months])       # €/MWh_fuel (daily prices not available for free market)
+gas_price_fuel = np.array([gas_monthly[m] for m in months])       # €/MWh_fuel
 
 # ─────────────────────────────────────────────
 # 4. Plant parameters
@@ -33,7 +70,7 @@ gas_price_fuel = np.array([gas_monthly[m] for m in months])       # €/MWh_fuel
 ETA_BOILER   = 0.98   # thermal efficiency of gas boiler
 COP_HP       = 3.5    # COP of heat pump
 P_BOILER_MAX = 10.0   # MW_th  (sized to peak demand ~9 MW)
-P_HP_MAX     =  5.0   # MW_th  (base-load sizing ~55 % of peak)
+P_HP_MAX     =  8.0   # MW_th  (base-load sizing ~55 % of peak)
 
 # Effective cost per produced MWh_th
 gas_cost_th = gas_price_fuel / ETA_BOILER          # €/MWh_th
@@ -129,7 +166,7 @@ ax2.plot(t_axis, gas_cost_th, color="#e07b39", lw=1.0, label="Gas (per MWh_th)")
 ax2.plot(t_axis, hp_cost_th,  color="#4a90d9", lw=1.0, label="Electricity → Heat (per MWh_th)")
 ax2.fill_between(t_axis, gas_cost_th, hp_cost_th,
                  where=(gas_cost_th < hp_cost_th),
-                 alpha=0.15, color="#e07b39", label="Gas cheaper")
+                 alpha=0.30, color="#e07b39", label="Gas cheaper")
 ax2.axhline(0, color="gray", lw=0.5, ls="--")
 ax2.set_ylabel("Cost [€/MWh_th]")
 ax2.legend(loc="upper right", fontsize=8)
