@@ -271,26 +271,59 @@ Q_slack_res   = np.array([pyo.value(model.Q_slack[t])   for t in T])
 # KPIs (Results)
 # ----------------------------------------------------------------
 
-# 1. Total electricity costs (OPEX)
+# 1. Heat Pump
+# Total electricity costs (OPEX)
 #    Strompreis [€/MWh] * elektr. Leistung [MW] * 1h = [€]
 opex_total = sum(price[t] * P_wp_res[t] for t in T)
-print(f"Total electricity costs (OPEX): {opex_total:,.0f} €")
 
 # 2. Operating hours
 #    Anzahl Stunden, in denen die WP Wärme liefert (Q_wp > 0)
 operating_hours = np.sum(Q_wp_res > 0.01)  # 0.01 als Toleranz gegen Rundungsfehler
-print(f"Operating hours: {operating_hours} h von {len(T)} h")
 
-# 3. Coverage rate
+# Stunden auf Volllast
+wp_hours_fullload = np.sum(Q_wp_res >= Q_wp_max * 0.99) 
+
+# Coverage rate
 #    Wie viel % der gesamten Wärmelast deckt die WP?
 coverage = np.sum(Q_wp_res) / np.sum(demand) * 100
-print(f"Coverage rate WP: {coverage:.1f} %")
 
-# 4. Slack (Backup-Bedarf)
+# MWh ins Netz gespeist
+wp_annual_heat    = np.sum(Q_wp_res)
+
+# 2. Slack (Backup-Bedarf)
 #    Wie viel Wärme konnte weder WP noch Speicher liefern?
 slack_total = np.sum(Q_slack_res)
 slack_share = slack_total / np.sum(demand) * 100
+
+# 5. Speicher
+storage_charged    = np.sum(charge_res)                     # MWh geladen gesamt
+storage_discharged = np.sum(discharge_res)                  # MWh entladen gesamt
+storage_hours      = np.sum(charge_res > 0.01)              # Stunden aktiv geladen
+
+# 6. Gesamtbilanz
+total_demand = np.sum(demand)
+
+print(f"\n--- Wärmepumpe ---")
+print(f"Total electricity costs (OPEX): {opex_total:,.0f} €")
+print(f"Operating hours: {operating_hours} h von {len(T)} h")
+print(f"  Stunden auf Volllast:        {wp_hours_fullload} h/Jahr")
+print(f"Coverage rate WP: {coverage:.1f} %")
+print(f"  Wärme ins Netz gespeist:     {wp_annual_heat:,.0f} MWh/Jahr")
+
+print(f"\n--- Slack / Backup (Gaskessel-Platzhalter) ---")
 print(f"Unmet demand (Slack/Backup): {slack_total:,.0f} MWh  ({slack_share:.1f} % der Last)")
+
+print(f"\n--- Speicher ---")
+print(f"  Geladene Energie gesamt:     {storage_charged:,.0f} MWh/Jahr")
+print(f"  Entladene Energie gesamt:    {storage_discharged:,.0f} MWh/Jahr")
+print(f"  Ladestunden:                 {storage_hours} h/Jahr")
+print(f"  Max. Füllstand erreicht:     {np.max(SOC_res):.1f} MWh  (von {storage_cap} MWh)")
+
+print(f"\n--- Gesamtbilanz ---")
+print(f"  Gesamter Wärmebedarf:        {total_demand:,.0f} MWh/Jahr")
+print(f"  Davon WP:                    {wp_annual_heat/total_demand*100:.1f} %")
+print(f"  Davon Speicher:              {np.sum(discharge_res)/total_demand*100:.1f} %")
+print(f"  Davon Backup/Slack:          {slack_share:.1f} %")
 
 # Dauerlinie sortieren
 sorted_idx = np.argsort(-demand)
