@@ -45,7 +45,7 @@ price  = df_price['Preis_EUR_MWh'].values[:len(T)]
 # Parameter
 P_wp_max      = 350     # [MW]
 P_pv_max_ub   = 500     # Obere Schranke PV-Anlagengröße [MW]
-verguetung    = 10      # Einspeisevergütung [€/MWh]
+verguetung    = 6      # Einspeisevergütung [€/MWh]
 eta_pv        = 0.85    # System Efficiency PV [-]
 netzentgelt   = 70      # Netzentgelte [€/MWh]
 
