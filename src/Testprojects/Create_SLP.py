@@ -218,7 +218,7 @@ Methodik:
 """
 
 
-load_file  = r"src/Testprojects/district_heating_data_Flensburg_2017.xlsx"
+load_file  = r"src/Testprojects/Data/district_heating_data_Flensburg_2017.xlsx"
 
 # pd.readexcel(file,
 #               skiprows: Zeilen überspringen (Anzahl),

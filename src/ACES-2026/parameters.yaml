@@ -1,26 +1,26 @@
 Net_parameters:
-  supply_temperature: 80 #°C
+  supply_temperature: 80        #°C
+  delta_T: 25                   #K
   specific_heat_capacity: 4.187 #kJ/kgK
-  density: 1000 #kg/m3
-  delta_T: 25 #K
+  density: 1000                 #kg/m3
 
 System_parameters:
   Storage: 
-    initial_storage_capacity: 500 #m3
-    max_charge_rate: 0.25 # % der Speicherkapazität pro
-    max_discharge_rate: 0.25 # % der Speicherkapazität pro Zeitschritt (z.B. 0.25 = 25% der Kapazität kann pro Stunde geladen/entladen)
-    p_loss: 0.167 #1.67/(24*1000) #MWh Wärmeverlust
-    SOC_init: 0.0 # % initialer Ladezustand (Anfang u. Ende)
-    invest_offset: 196675 #€ --> aus Technikkatalog (Offset) 
-    specific_cost: 0.086139 #86.139/1000 #€/L --> aus Technikkatalog (linearisiert)
+    initial_storage_capacity: 500   #m3
+    max_charge_rate: 0.25           # % of storage capacity per hour
+    max_discharge_rate: 0.25        # % of storage capacity per hour
+    Q_loss: 0.167                   # 1.67/(24*1000) #MWh heat loss
+    SOC_init: 0.0                   # % initial state of charge (start&end) #TODO: geht iwie noch nicht über 0 :)
+    invest_offset_storage: 78021      # Euro    --> 
+    specific_invest_storage: 22.71    # Euro/m3 --> linear data for 100-1000 m3
   Pump:
     gravity: 9.81 #m/s2
-    del_height: 5 #m Förderhöhe (Schätzung)
-    eta_pump: 0.9 #Pumpenwirkungsgrad
+    del_height: 5 #m approximation
+    eta_pump: 0.9 # efficiency
   HP:
     COP: 3.5
-    hp_thermal_power_max: 3.5 #MW
+    hp_thermal_power_max: 3.5 # MW
 
 Invest_parameters:
-  lifetime_years: 20 #a Ammoritsationszeitraum
-  interest_rate: 0.05 #Zins
+  lifetime_years: 20  #a 
+  interest_rate: 0.05 
