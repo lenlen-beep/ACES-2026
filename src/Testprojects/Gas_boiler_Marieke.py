@@ -1,3 +1,50 @@
+"""
+Dispatch Optimization: Gas Boiler + Heat Pump for a Small Municipality
+=======================================================================
+
+This script solves a cost-minimizing dispatch optimization problem for a
+small district heating system (~2,000 inhabitants, ~2.6 % of Flensburg's
+total heat demand) served by two complementary technologies: Gas Boiler and Heat Pump  
+
+The optimization is formulated as a Linear Program (LP) using the Pyomo
+modelling framework and solved with the open-source HiGHS solver. For each
+of the 8,759 hours of the year the model determines the cost-optimal split
+of heat production between the two plants, subject to:
+
+  1. Heat balance  – combined output must always meet the hourly demand.
+  2. Capacity limits – each plant is bounded by its installed capacity.
+  3. Boiler lock   – the gas boiler is only permitted to operate when it
+                     produces heat more cheaply than the heat pump, OR when
+                     heat pump capacity alone is insufficient to cover demand.
+
+Input data
+----------
+  - Hourly heat demand        : Flensburg 2017, scaled by factor 0.026
+                                (source: Flensburg2017_Municipality_scale026.xlsx)
+  - Hourly electricity prices : Germany / Luxembourg day-ahead market, 2024
+                                (source: Gro_handelspreise_202401010000_202501010000_Stunde.xlsx)
+  - Monthly gas prices        : Germany 2017
+                                (source: Gas_Prices_Germany_2017.xlsx)
+
+Outputs
+-------
+  - Console summary  : total annual costs (€) and operating hours per mode
+  - dispatch_optimization_result.png  : full-year dispatch, price signals,
+                                        and hourly operating-mode chart
+  - dispatch_analysis.png             : monthly cost breakdown, monthly
+                                        operating hours, and load duration curve
+
+                                        
+To Do
+-----
+CO2 Preise, unterscheiden zwischen Erdgas und Biogas
+Sensitivity analysis
+
+
+
+
+"""
+
 import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
@@ -6,13 +53,19 @@ from matplotlib.patches import Patch
 
 
 # ─────────────────────────────────────────────
-# 1. Load heat demand (Flensburg 2017, hourly) scaled to 2.6 % (peak ~9 MW) --> 2000 people municipality
+# 1. Load demand (Flensburg 2017, hourly) scaled to 2.6 % (peak ~9 MW) --> 2000 people municipality
 # ─────────────────────────────────────────────
 dem_df  = pd.read_excel("Flensburg2017_Municipality_scale026.xlsx", sheet_name="Hourly Data")
 demand  = dem_df["Q_Municipality (MW)"].values          # MW_th
 months  = dem_df["Month"].values                        # 1–12, for gas price lookup
-N       = len(demand)                                   # 8 759 hours
-T       = range(N)
+N                  = len(demand)                        # 8 759 hours
+T                  = range(N)
+peak_demand        = float(np.max(demand))              # MW_th, Spitzenwärmelast aus Daten
+annual_demand_mwh  = float(np.sum(demand))              # MWh_th/a, Jahreswärmebedarf
+
+# Legal cap: gas boiler ≤ 10 % of annual heat feed-in (GEG / WPG, Stand Juni 2026)
+BOILER_SHARE_MAX   = 0.10
+boiler_energy_cap  = BOILER_SHARE_MAX * annual_demand_mwh   # MWh_th/a
 
 # ─────────────────────────────────────────────
 # 2. Load electricity prices (DE 2024, hourly, index-aligned)
@@ -21,19 +74,57 @@ el_df       = pd.read_excel("Gro_handelspreise_202401010000_202501010000_Stunde.
 el_price    = el_df["Deutschland/Luxemburg [€/MWh]"].values[:N]   # €/MWh_el
 
 # ─────────────────────────────────────────────
-# 3. Load gas prices (Germany 2017, monthly → hourly)
+# 3. Load gas prices (Germany 2017, monthly → hourly) (daily prices not available for free market)
 # ─────────────────────────────────────────────
 gas_df      = pd.read_excel("Gas_Prices_Germany_2017.xlsx", skiprows=2)
 gas_monthly = {i + 1: row["End Price [€/MWh]"] for i, row in gas_df.iloc[:12].iterrows()}
-gas_price_fuel = np.array([gas_monthly[m] for m in months])       # €/MWh_fuel (daily prices not available for free market)
+gas_price_fuel = np.array([gas_monthly[m] for m in months])       # €/MWh_fuel
 
 # ─────────────────────────────────────────────
 # 4. Plant parameters
 # ─────────────────────────────────────────────
 ETA_BOILER   = 0.98   # thermal efficiency of gas boiler
 COP_HP       = 3.5    # COP of heat pump
-P_BOILER_MAX = 10.0   # MW_th  (sized to peak demand ~9 MW)
-P_HP_MAX     =  5.0   # MW_th  (base-load sizing ~55 % of peak)
+P_HP_MAX     = 8.0    # MW_th  (base-load sizing ~55 % of peak)
+P_BOILER_MAX = float(np.ceil(peak_demand))             # MW_th, Spitzenlastkessel: Auslegung auf Spitzenwärmelast
+
+# Specific investment costs as function of plant size (economies of scale)
+# Power law:  c_spec(P) = a * P_MW^b  [€/MW_th],  b < 0 (larger → cheaper per MW)
+# Calibration points (literature, DE Nahwärme):
+#   Gas boiler : 150 €/kW at 0.5 MW  |  75 €/kW at 10 MW
+#   Heat pump  : 1200 €/kW at 0.5 MW | 500 €/kW at 10 MW
+
+def capex_specific(P_MW, a, b):
+    """Specific investment cost [€/MW_th] as a function of installed capacity."""
+    return a * P_MW ** b
+
+# Scaling coefficients (a [€/MW_th], b [-]) – derived from calibration points above
+_SCALE_BOILER = (127_800, -0.231)
+_SCALE_HP     = (980_400, -0.292)
+
+CAPEX_BOILER = capex_specific(P_BOILER_MAX, *_SCALE_BOILER)   # €/MW_th
+CAPEX_HP     = capex_specific(P_HP_MAX,     *_SCALE_HP)       # €/MW_th
+
+# Economic parameters for annuity calculation
+INTEREST_RATE    = 0.05   # 5 % p.a.
+LIFETIME_BOILER  = 20     # Jahre
+LIFETIME_HP      = 20     # Jahre
+
+def annuity_factor(i, n):
+    """Annuitätenfaktor: i*(1+i)^n / ((1+i)^n - 1)"""
+    return i * (1 + i) ** n / ((1 + i) ** n - 1)
+
+annuity_boiler = annuity_factor(INTEREST_RATE, LIFETIME_BOILER)
+annuity_hp     = annuity_factor(INTEREST_RATE, LIFETIME_HP)
+
+# Total and annualised investment costs
+invest_boiler        = CAPEX_BOILER * P_BOILER_MAX   # € gesamt
+invest_hp            = CAPEX_HP     * P_HP_MAX        # € gesamt
+total_invest         = invest_boiler + invest_hp       # € gesamt
+
+annualised_boiler    = annuity_boiler * invest_boiler  # €/a
+annualised_hp        = annuity_hp     * invest_hp      # €/a
+total_annualised     = annualised_boiler + annualised_hp  # €/a
 
 # Effective cost per produced MWh_th
 gas_cost_th = gas_price_fuel / ETA_BOILER          # €/MWh_th
@@ -72,6 +163,12 @@ def boiler_lock(m, t):
 
 model.boiler_lock = pyo.Constraint(model.T, rule=boiler_lock)
 
+# Legal cap: annual boiler output ≤ 10 % of total heat supply (GEG / WPG)
+def boiler_annual_cap(m):
+    return sum(m.P_boiler[t] for t in m.T) <= boiler_energy_cap
+
+model.boiler_annual_cap = pyo.Constraint(rule=boiler_annual_cap)
+
 # ─────────────────────────────────────────────
 # 6. Solve
 # ─────────────────────────────────────────────
@@ -88,10 +185,36 @@ total_cost_boiler = float(np.sum(gas_cost_th * P_boiler_res))
 total_cost_hp     = float(np.sum(hp_cost_th  * P_hp_res))
 total_cost        = total_cost_boiler + total_cost_hp
 
-print(f"\n── Cost summary ───────────────────────────")
+boiler_energy_used = float(np.sum(P_boiler_res))        # MWh_th/a tatsächlich
+boiler_share_pct   = boiler_energy_used / annual_demand_mwh * 100
+
+print(f"\n── Plant sizing ───────────────────────────")
+print(f"  Peak heat demand                        : {peak_demand:>10.2f} MW_th")
+print(f"  Annual heat demand                      : {annual_demand_mwh:>10.0f} MWh_th/a")
+print(f"  Gas boiler (Spitzenlast, ceil)          : {P_BOILER_MAX:>10.0f} MW_th")
+print(f"  Heat pump  (Grundlast, fix)             : {P_HP_MAX:>10.0f} MW_th")
+
+print(f"\n── Legal cap (GEG/WPG): boiler ≤ {BOILER_SHARE_MAX*100:.0f} % ──")
+print(f"  Allowed boiler energy                   : {boiler_energy_cap:>10.0f} MWh_th/a")
+print(f"  Actual  boiler energy                   : {boiler_energy_used:>10.0f} MWh_th/a")
+print(f"  Boiler share                            : {boiler_share_pct:>9.1f} %  {'[BINDING]' if boiler_share_pct >= BOILER_SHARE_MAX*100 - 0.05 else '[slack]'}")
+
+print(f"\n── Investment costs (CAPEX) ───────────────")
+print(f"  Gas boiler  ({P_BOILER_MAX:.0f} MW → {CAPEX_BOILER/1e3:.1f} k€/MW_th spez.) : {invest_boiler/1e3:>8.0f} k€")
+print(f"  Heat pump   ({P_HP_MAX:.0f} MW → {CAPEX_HP/1e3:.1f} k€/MW_th spez.) : {invest_hp/1e3:>8.0f} k€")
+print(f"  Total investment                        : {total_invest/1e3:>10.0f} k€")
+print(f"\n── Annualised investment costs (i={INTEREST_RATE*100:.0f}%, {LIFETIME_BOILER}a) ──")
+print(f"  Gas boiler  (α={annuity_boiler:.4f})        : {annualised_boiler/1e3:>10.1f} k€/a")
+print(f"  Heat pump   (α={annuity_hp:.4f})        : {annualised_hp/1e3:>10.1f} k€/a")
+print(f"  Total annualised                        : {total_annualised/1e3:>10.1f} k€/a")
+
+print(f"\n── Operating costs (OPEX) ─────────────────")
 print(f"  Gas boiler total : {total_cost_boiler:>12.0f} €")
 print(f"  Heat pump total  : {total_cost_hp:>12.0f} €")
 print(f"  Total costs      : {total_cost:>12.0f} €")
+
+print(f"\n── Total annual costs (CAPEX + OPEX) ──────")
+print(f"  Total            : {(total_annualised + total_cost)/1e3:>12.1f} k€/a")
 
 h_boiler_only = int(np.sum((P_boiler_res > 0.01) & (P_hp_res  <= 0.01)))
 h_hp_only     = int(np.sum((P_hp_res  > 0.01) & (P_boiler_res <= 0.01)))
@@ -129,7 +252,7 @@ ax2.plot(t_axis, gas_cost_th, color="#e07b39", lw=1.0, label="Gas (per MWh_th)")
 ax2.plot(t_axis, hp_cost_th,  color="#4a90d9", lw=1.0, label="Electricity → Heat (per MWh_th)")
 ax2.fill_between(t_axis, gas_cost_th, hp_cost_th,
                  where=(gas_cost_th < hp_cost_th),
-                 alpha=0.15, color="#e07b39", label="Gas cheaper")
+                 alpha=0.30, color="#e07b39", label="Gas cheaper")
 ax2.axhline(0, color="gray", lw=0.5, ls="--")
 ax2.set_ylabel("Cost [€/MWh_th]")
 ax2.legend(loc="upper right", fontsize=8)
@@ -190,15 +313,19 @@ fig2.suptitle("Dispatch Optimization: Monthly & Duration Analysis",
 
 x_m = np.arange(12)
 
-# Plot 4: Monthly cost breakdown
+# Plot 4: Monthly cost breakdown (OPEX + annualised CAPEX)
+monthly_capex = np.full(12, total_annualised / 12)   # equal monthly share of annualised CAPEX
 ax4 = axes2[0]
-ax4.bar(x_m, monthly_cost_boiler / 1e3, color="#e07b39", alpha=0.85, label="Gas Boiler")
+ax4.bar(x_m, monthly_cost_boiler / 1e3, color="#e07b39", alpha=0.85, label="Gas Boiler (OPEX)")
 ax4.bar(x_m, monthly_cost_hp / 1e3, bottom=monthly_cost_boiler / 1e3,
-        color="#4a90d9", alpha=0.85, label="Heat Pump")
+        color="#4a90d9", alpha=0.85, label="Heat Pump (OPEX)")
+opex_total = monthly_cost_boiler + monthly_cost_hp
+ax4.bar(x_m, monthly_capex / 1e3, bottom=opex_total / 1e3,
+        color="#2ecc71", alpha=0.85, label=f"CAPEX (ann. {total_annualised/1e3:.1f} k€/a)")
 ax4.set_xticks(x_m)
 ax4.set_xticklabels(month_labels, fontsize=8)
 ax4.set_ylabel("Cost [k€]")
-ax4.set_title("Monthly Cost Breakdown")
+ax4.set_title("Monthly Cost Breakdown (OPEX + CAPEX)")
 ax4.legend(fontsize=8)
 ax4.grid(True, alpha=0.3, axis="y")
 
