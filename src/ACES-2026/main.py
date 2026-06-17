@@ -4,12 +4,14 @@ from funcs.plots import plot_bdew_profiles, plot_temperatures, plot_prices, plot
 from funcs.read_data import read_price_data
 from funcs.energy_system_optimization import optimize_energy_system
 
+import pandas as pd
+import numpy as np
 
 # -------------------------------------------------
 # Lastinputs definieren
 # -------------------------------------------------
 
-# Nennlast des Wärmenetzes (Gesamt) in MW
+# Nennlast des Wärmenetzes (Gesamt) in MWh (?)
 rated_load = 3e3
 
 # Lastverteilung nach Gebäudetyp nach dena Gebäudereport 2024 (Wohngebäudebestand)
@@ -55,7 +57,6 @@ electricity_price = read_price_data(
 # --------------------------------------------------
 # Energiesystemoptimierung
 # --------------------------------------------------
-
 
 results, result_df_heatpump, result_df_charge, result_df_discharge, result_df_SOC, \
     result_storage_capacity = optimize_energy_system(total_load, electricity_price)
