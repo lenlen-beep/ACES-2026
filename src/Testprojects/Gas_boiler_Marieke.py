@@ -34,15 +34,6 @@ Outputs
   - dispatch_analysis.png             : monthly cost breakdown, monthly
                                         operating hours, and load duration curve
 
-                                        
-To Do
------
-CO2 Preise, unterscheiden zwischen Erdgas und Biogas
-Sensitivity analysis
-
-
-
-
 """
 
 import numpy as np
