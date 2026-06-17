@@ -47,7 +47,7 @@ P_wp_max      = 350     # [MW]
 P_pv_max_ub   = 500     # Obere Schranke PV-Anlagengröße [MW]
 verguetung    = 6      # Einspeisevergütung [€/MWh]
 eta_pv        = 0.85    # System Efficiency PV [-]
-netzentgelt   = 70      # Netzentgelte [€/MWh]
+netzentgelt   = 0      # Netzentgelte [€/MWh]
 
 # PV Wirtschaftlichkeit
 capex         = 800_000 # Investitionskosten [€/MW]
