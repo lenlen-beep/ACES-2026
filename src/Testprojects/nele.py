@@ -11,6 +11,11 @@ import pyomo.environ as pyo
 import numpy as np
 import matplotlib.pyplot as plt
 
+# Globale Plot-Einstellungen
+plt.rcParams['figure.dpi'] = 150          # höhere Bildschirmauflösung
+plt.rcParams['lines.linewidth'] = 1.2     # etwas dünnere Linien für Klarheit
+
+
 """
 Optimierung eines Fernwärmesystems mit Wärmepumpe und Wärmespeicher.
 
@@ -89,7 +94,8 @@ print(f"  Mittelwert: {sum(price.values())/len(price):.2f} €/MWh")
 
 # --- Wärmepumpe: Technisch ---
 COP = 3.5               # Coefficient of Performance
-Q_wp_max = 5           # Max. thermische Leistung der WP [MW_th]
+Q_wp_min_size = 0.0    # Minimale WP-Größe [MW_th]
+Q_wp_max_size = 30.0   # Maximale WP-Größe [MW_th]
 
 T_supply = 80           # Vorlauftemperatur Fernwärmenetz [°C] (Annahme)
 T_return = 50           # Rücklauftemperatur Fernwärmenetz [°C] (Annahme)
@@ -125,15 +131,16 @@ model.T = pyo.Set(initialize=T)
 
 # --- Wärmepumpe ---
 
+# Optimale Größe der WP [MW_th]
+model.Q_wp_nom = pyo.Var(bounds=(Q_wp_min_size, Q_wp_max_size))
+
 # Thermische Leistung der WP in Stunde t [MW_th]
 # -> Wie viel Wärme liefert die WP in Stunde t?
-# bounds: min. 0, max. Q_wp_max
-model.Q_wp = pyo.Var(model.T, bounds=(0, Q_wp_max))
+model.Q_wp = pyo.Var(model.T, bounds=(0, None))
 
 # Elektrische Leistungsaufnahme der WP in Stunde t [MW_el]
 # -> Wie viel Strom verbraucht die WP in Stunde t?
-# Zusammenhang: Q_wp = COP * P_wp  ->  P_wp = Q_wp / COP
-model.P_wp = pyo.Var(model.T, bounds=(0, Q_wp_max / COP))
+model.P_wp = pyo.Var(model.T, bounds=(0, None))
 
 # An/Aus-Status der WP in Stunde t [-]
 # -> 1 = WP läuft, 0 = WP ist aus
@@ -168,7 +175,8 @@ model.Q_slack = pyo.Var(model.T, bounds=(0, None))
 #-----------------------------------------------------------------------------
 # Zielfunktion (Bewertungsregel)
 #-----------------------------------------------------------------------------
-
+"""
+ALT:
 # Strafkosten für ungedeckten Wärmebedarf [€/MWh]
 # Sehr hoch angesetzt, damit Solver Q_slack so klein wie möglich hält
 penalty = 10000
@@ -181,6 +189,21 @@ penalty = 10000
 # Stromkosten = Preis [€/MWh] * Leistung [MW] * 1 Stunde = [€]
 def obj_rule(m):
     return sum(price[t] * m.P_wp[t] + penalty * m.Q_slack[t] for t in m.T)
+
+model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
+"""
+
+#NEU:
+# Annualisierter CAPEX [€/Jahr]
+# CAPEX_spez [€/kW_th] * Q_wp_nom [MW_th] * 1000 [kW/MW] * (1 - subsidy_rate)
+# Geteilt durch lifetime [Jahre] = einfache lineare Annualisierung
+# (ohne Diskontierung, da discount_rate auskommentiert)
+penalty = 10000
+
+def obj_rule(m):
+    capex_annual = (CAPEX_spez * m.Q_wp_nom * 1000 * (1 - subsidy_rate)) / lifetime
+    opex_annual  = sum(price[t] * m.P_wp[t] + penalty * m.Q_slack[t] for t in m.T)
+    return capex_annual + opex_annual
 
 model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
 
@@ -197,7 +220,16 @@ def cop_rule(m, t):
 
 model.cop_constraint = pyo.Constraint(model.T, rule=cop_rule)
 
-# 2. Wärmebilanz: Angebot == Nachfrage in jeder Stunde
+# 2. Kapazitätsgrenze: WP darf nie mehr liefern als ihre installierte Größe
+#    Q_wp[t] <= Q_wp_nom   (gilt für jeden Zeitschritt)
+#    -> verknüpft die Betriebsvariable Q_wp[t] mit der Größenvariable Q_wp_nom
+
+def capacity_rule(m, t):
+    return m.Q_wp[t] <= m.Q_wp_nom
+
+model.capacity_constraint = pyo.Constraint(model.T, rule=capacity_rule)
+
+# 3. Wärmebilanz: Angebot == Nachfrage in jeder Stunde
 #    Verfügbare Wärme (WP + Speicher entladen + Slack)
 #    == Benötigte Wärme (Last + Speicher laden)
 
@@ -206,7 +238,7 @@ def heat_balance(m, t):
 
 model.heat_balance = pyo.Constraint(model.T, rule=heat_balance)
 
-# 3. Speicherdynamik: Füllstand in Stunde t
+# 4. Speicherdynamik: Füllstand in Stunde t
 #    SOC[t] = SOC[t-1] + eta*charge[t] - (1/eta)*discharge[t]
 #    -> Stunde 0: Speicher startet leer
 
@@ -217,11 +249,11 @@ def storage_rule(m, t):
 
 model.storage = pyo.Constraint(model.T, rule=storage_rule)
 
-# 4. Speicherkapazität: SOC darf storage_cap nicht überschreiten
+# 5. Speicherkapazität: SOC darf storage_cap nicht überschreiten
 #    -> bereits durch bounds=(0, storage_cap) in der Variable gesichert
 #    -> kein extra Constraint nötig
 
-# 5. 100 % Strom aus Erneuerbaren/PV
+# 6. 100 % Strom aus Erneuerbaren/PV
 #    Annahme: PV liefert konstant P_pv [MW_el]
 #    Netzstrom = max(0, P_wp[t] - P_pv)
 #    Linearisierung: P_net[t] >= P_wp[t] - P_pv
@@ -266,31 +298,74 @@ charge_res    = np.array([pyo.value(model.charge[t])    for t in T])
 discharge_res = np.array([pyo.value(model.discharge[t]) for t in T])
 SOC_res       = np.array([pyo.value(model.SOC[t])       for t in T])
 Q_slack_res   = np.array([pyo.value(model.Q_slack[t])   for t in T])
+Q_wp_nom_res = pyo.value(model.Q_wp_nom)
 
 # ----------------------------------------------------------------
 # KPIs (Results)
 # ----------------------------------------------------------------
 
-# 1. Total electricity costs (OPEX)
+# 1. Heat Pump
+# Total electricity costs (OPEX)
 #    Strompreis [€/MWh] * elektr. Leistung [MW] * 1h = [€]
 opex_total = sum(price[t] * P_wp_res[t] for t in T)
-print(f"Total electricity costs (OPEX): {opex_total:,.0f} €")
+
+# Optimale WP-Größe
+Q_wp_nom_res = pyo.value(model.Q_wp_nom)
+capex_total  = CAPEX_spez * Q_wp_nom_res * 1000 * (1 - subsidy_rate)
 
 # 2. Operating hours
 #    Anzahl Stunden, in denen die WP Wärme liefert (Q_wp > 0)
 operating_hours = np.sum(Q_wp_res > 0.01)  # 0.01 als Toleranz gegen Rundungsfehler
-print(f"Operating hours: {operating_hours} h von {len(T)} h")
 
-# 3. Coverage rate
+# Stunden auf Volllast
+wp_hours_fullload = np.sum(Q_wp_res >= Q_wp_nom_res * 0.99) 
+
+# Coverage rate
 #    Wie viel % der gesamten Wärmelast deckt die WP?
 coverage = np.sum(Q_wp_res) / np.sum(demand) * 100
-print(f"Coverage rate WP: {coverage:.1f} %")
 
-# 4. Slack (Backup-Bedarf)
+# MWh ins Netz gespeist
+wp_annual_heat    = np.sum(Q_wp_res)
+
+# 2. Slack (Backup-Bedarf)
 #    Wie viel Wärme konnte weder WP noch Speicher liefern?
 slack_total = np.sum(Q_slack_res)
 slack_share = slack_total / np.sum(demand) * 100
+
+# 5. Speicher
+storage_charged    = np.sum(charge_res)                     # MWh geladen gesamt
+storage_discharged = np.sum(discharge_res)                  # MWh entladen gesamt
+storage_hours      = np.sum(charge_res > 0.01)              # Stunden aktiv geladen
+
+# 6. Gesamtbilanz
+total_demand = np.sum(demand)
+
+print(f"\n--- Optimale WP-Dimensionierung ---")
+print(f"  Optimale WP-Größe:           {Q_wp_nom_res:.2f} MW_th")
+print(f"  CAPEX (nach Förderung):      {capex_total:,.0f} €")
+print(f"  CAPEX annualisiert:          {capex_total/lifetime:,.0f} €/Jahr")
+
+print(f"\n--- Wärmepumpe ---")
+print(f"Total electricity costs (OPEX): {opex_total:,.0f} €")
+print(f"Operating hours: {operating_hours} h von {len(T)} h")
+print(f"  Stunden auf Volllast:        {wp_hours_fullload} h/Jahr")
+print(f"Coverage rate WP: {coverage:.1f} %")
+print(f"  Wärme ins Netz gespeist:     {wp_annual_heat:,.0f} MWh/Jahr")
+
+print(f"\n--- Slack / Backup (Gaskessel-Platzhalter) ---")
 print(f"Unmet demand (Slack/Backup): {slack_total:,.0f} MWh  ({slack_share:.1f} % der Last)")
+
+print(f"\n--- Speicher ---")
+print(f"  Geladene Energie gesamt:     {storage_charged:,.0f} MWh/Jahr")
+print(f"  Entladene Energie gesamt:    {storage_discharged:,.0f} MWh/Jahr")
+print(f"  Ladestunden:                 {storage_hours} h/Jahr")
+print(f"  Max. Füllstand erreicht:     {np.max(SOC_res):.1f} MWh  (von {storage_cap} MWh)")
+
+print(f"\n--- Gesamtbilanz ---")
+print(f"  Gesamter Wärmebedarf:        {total_demand:,.0f} MWh/Jahr")
+print(f"  Davon WP:                    {wp_annual_heat/total_demand*100:.1f} %")
+print(f"  Davon Speicher:              {np.sum(discharge_res)/total_demand*100:.1f} %")
+print(f"  Davon Backup/Slack:          {slack_share:.1f} %")
 
 # Dauerlinie sortieren
 sorted_idx = np.argsort(-demand)
