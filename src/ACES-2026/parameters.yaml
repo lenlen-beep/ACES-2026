@@ -1,90 +1,119 @@
-Net_parameters:
-  supply_temperature: 80        #°C
-  delta_T: 25                   #K
-  specific_heat_capacity: 4.187 #kJ/kgK
-  density: 1000                 #kg/m3
-  cp: 4187                      #J/kgK
+net_parameters:
+  supply_temperature: 80          # °C
+  delta_T: 25                     # K
+  specific_heat_capacity: 4.187   # kJ/kgK
+  density: 1000                   # kg/m3
+  cp: 4187                        # J/kgK
 
-System_parameters:
-  Storage: #Buffer Storage (tank)
-    initial_storage_capacity: 500   #m3
-    max_charge_rate: 0.25           # % of storage capacity per hour (Quelle?)
-    max_discharge_rate: 0.25        # % of storage capacity per hour (quelle?)
-    Q_loss: 0.167                   # 1.67/(24*1000) #MWh heat loss #TODO!
-    SOC_init: 0.0                   # % initial state of charge (start&end) #TODO: geht iwie noch nicht über 0 :)
-    invest_offset_storage: 78021       # Euro (Danish storage catalogue pdf) 0-1000m3
-    specific_invest_storage: 222.71    # Euro/m3 --> linear data for 100-1000 m3 (Danish storage catalogue pdf) 0-1000m3
-  Pump:
-    gravity: 9.81 #m/s2
-    del_height: 5 #m approximation
-    eta_pump: 0.9 # efficiency
-  HP:
+system_parameters:
+
+  storage:                        # Buffer Storage (tank)
+    initial_storage_capacity: 500 # m3
+    max_charge_rate: 0.25         # Anteil der Kapazität pro Stunde (Quelle?)
+    max_discharge_rate: 0.25      # Anteil der Kapazität pro Stunde (Quelle?)
+    Q_loss: 0.167                 # MWh Wärmeverlust  # TODO prüfen
+    SOC_init: 0.0                 # Anfangs-/End-Ladezustand  # TODO
+    invest_offset_storage: 78021  # Euro (Danish storage catalogue), 0-1000 m3
+    specific_invest_storage: 222.71  # Euro/m3, linear 100-1000 m3 (Danish storage catalogue)
+
+  pump:
+    gravity: 9.81                 # m/s2
+    del_height: 5                 # m (Näherung)
+    eta_pump: 0.9                 # Wirkungsgrad
+
+  HP:                             # Wärmepumpe
     COP: 3.5
-    initial_hp_capacity: 30   #MW
-    invest_offset_hp: 0      # Euro
-    specific_invest_hp: 700000   # Euro/MW --> linear data for xxx MW
-  Gas_boiler:
+    initial_hp_capacity: 30       # MW
+    invest_offset_hp: 0           # Euro
+    specific_invest_hp: 700000    # Euro/MW
+
+  gas_boiler:
     eta_gas_boiler: 0.98
     initial_gas_thermal_power: 30 # MW
-    specific_invest_gas_boiler: 2690 # Euro/MW --> linear data for xxx MW
-    invest_offset_boiler: 0 # Euro
-  Seasonal_storage: #(PTES) Grubenspeicher
-    invest_offset_seasonal_storage: 892300 # Euro claude vorschlag 200000
-    specific_invest_seasonal_storage: 20   # Euro/m3 --> claude vorschlag 8
+    specific_invest_gas_boiler: 2690  # Euro/MW
+    invest_offset_boiler: 0       # Euro
+
+  seasonal_storage:               # PTES / Grubenspeicher
+    invest_offset_seasonal_storage: 892300   # Euro
+    specific_invest_seasonal_storage: 20     # Euro/m3
     initial_seasonal_storage_capacity: 10000 # m3
-    max_seasonal_charge_rate: 0.03 # % of storage capacity per hour (Quelle?)
-    max_seasonal_discharge_rate: 0.03 # % of storage capacity per hour (Quelle?)
+    max_seasonal_charge_rate: 0.03           # Anteil/Stunde (Quelle?)
+    max_seasonal_discharge_rate: 0.03        # Anteil/Stunde (Quelle?)
+
   PV:
-    invest_offset_pv: 0          # Euro
-    specific_invest_pv: 850000   # Euro/MW (= 850 Euro/kWp für 1-10MWp Anlagen) https://www.logicenergy.de/pv-freiflaechenanlagen --> claude vorschlag 500000
-    initial_pv_capacity: 5       # MW
-    feed_in_tariff: 50           # Euro/MWh (Durchschnitt der Gebote der Bundesnetzagentur 2024-2026) 
-    specific_area_usage: 100 # Wp/m2
+    invest_offset_pv: 0           # Euro
+    specific_invest_pv: 850000    # Euro/MW (= 850 Euro/kWp, 1-10 MWp)
+    initial_pv_capacity: 5        # MW
+    feed_in_tariff: 50            # Euro/MWh (Ø BNetzA-Gebote 2024-2026)
+    specific_area_usage: 100      # Wp/m2
 
+invest_parameters:
+  lifetime_years: 20              # a
+  interest_rate: 0.05
 
-Invest_parameters:
-  lifetime_years: 20  #a 
-  interest_rate: 0.05 
+price_parameters:                 # SH-Netz 2025
 
-Pipe_parameters:
-  kr: 0.4                     #mm
-  specific_pressure_loss: 150 #Pa/m
-  Pipe_models:
-    - DN: '20'
-      u_value:
-      diameter:
-    - DN: '25'
-      u_value:
-      diameter:
-    - DN: '40'
-      u_value:
-      diameter:
-    - DN: '50'
-      u_value:
-      diameter:
-    - DN: '65'
-      u_value:
-      diameter:
-    - DN: '80'
-      u_value:
-      diameter:
-    - DN: '100'
-      u_value:
-      diameter:
-    - DN: '125'
-      u_value:
-      diameter:
-    - DN: '150'
-      u_value:
-      diameter:
-    - DN: '200'
-      u_value:
-      diameter:
-    - DN: '250'
-      u_value:
-      diameter:
-    - DN: '300'
-      u_value:
-      diameter:
+  electricity:
+    tarif:                        # ct/kWh all-in
+      usual_mid: 16.77
+      pre_stress: 21.77
+      stress: 35.7
+    network_charge:
+      lower_2500VBH:
+        capacity_charge: 25.0     # Euro/kW*a
+        commodity_charge: 4.97    # ct/kWh
+      higher_2500VBH:
+        capacity_charge: 115.61   # Euro/kW*a
+        commodity_charge: 1.38    # ct/kWh
+    tax: 2.05                     # ct/kWh
+    high_load_window:
+      autumn: '16:45 - 19:00'
+      winter: '17:00 - 19:15'
+    hedge_bandwidth: [0, 0.3, 0.6, 1.0]
 
+  gas:
+    tarif:                        # ct/kWh all-in
+      usual_mid: 7.2
+      pre_stress: 3.3
+      stress: 12.2
 
+pipe_parameters:
+  kr: 0.4                         # mm
+  specific_pressure_loss: 150     # Pa/m
+  pipe_models:
+    - DN: 20
+      u_value: null               # TODO ausfüllen
+      diameter: null
+    - DN: 25
+      u_value: null
+      diameter: null
+    - DN: 40
+      u_value: null
+      diameter: null
+    - DN: 50
+      u_value: null
+      diameter: null
+    - DN: 65
+      u_value: null
+      diameter: null
+    - DN: 80
+      u_value: null
+      diameter: null
+    - DN: 100
+      u_value: null
+      diameter: null
+    - DN: 125
+      u_value: null
+      diameter: null
+    - DN: 150
+      u_value: null
+      diameter: null
+    - DN: 200
+      u_value: null
+      diameter: null
+    - DN: 250
+      u_value: null
+      diameter: null
+    - DN: 300
+      u_value: null
+      diameter: null
