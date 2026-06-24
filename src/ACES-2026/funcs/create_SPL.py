@@ -1,5 +1,5 @@
 import pandas as pd
-from oemof.demand import bdew
+from demandlib import bdew
 
 # Import Meteostat library and dependencies
 from datetime import datetime
@@ -44,10 +44,6 @@ def load_temperature_data(
     # Cache prüfen
     # --------------------------------------------------
 
-    nearby = ms.stations.nearby(ms.Point(lat, lon), limit=1)
-    station_id = nearby.index[0]
-    print(f"\nVerwendete Station: {station_id}")
-
     if filepath.exists() and not reload_data:
 
         print("Lade Wetterdaten aus Cache ...")
@@ -57,29 +53,19 @@ def load_temperature_data(
             index_col=0,
             parse_dates=True
         )
+        station_id = filepath.stem
 
     else:
 
         print("Lade Wetterdaten von Meteostat ...")
-        
-        # --------------------------------------------------
-        # Zeitraum
-        # --------------------------------------------------
+
+        station_id = ms.Stations().nearby(lat, lon, 50000).fetch().index[0]
+        print(f"\nVerwendete Station: {station_id}")
 
         start = datetime(year, 1, 1)
         end = datetime(year, 12, 31, 23, 59)
 
-        # --------------------------------------------------
-        # Wetterdaten laden
-        # --------------------------------------------------
-
-        ts = ms.hourly(
-            station_id,
-            start,
-            end
-        )
-
-        df = ts.fetch()
+        df = ms.Hourly(station_id, start, end).fetch()
 
         # --------------------------------------------------
         # Lokal speichern
