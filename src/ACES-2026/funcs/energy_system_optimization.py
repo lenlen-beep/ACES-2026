@@ -1,7 +1,7 @@
 import pyomo.environ as pyo
 import numpy as np
 
-from read_data import read_parameters
+from .read_data import read_parameters
 
     # TODO:Der Speicher kann bei SOC = 0 keine Wärme verlieren (theoretisch aber schon, da 55°C RLT) 
     # --> beachten :)
@@ -33,62 +33,62 @@ Methodik:
 parameters = read_parameters("src/ACES-2026/parameters.yaml")
 
 #Netzparameter
-cp_w = parameters["Net_parameters"]["specific_heat_capacity"]
-rho_w = parameters["Net_parameters"]["density"]
-s_temp = parameters["Net_parameters"]["supply_temperature"]
-delta_T = parameters["Net_parameters"]["delta_T"]
+cp_w = parameters["net_parameters"]["specific_heat_capacity"]
+rho_w = parameters["net_parameters"]["density"]
+s_temp = parameters["net_parameters"]["supply_temperature"]
+delta_T = parameters["net_parameters"]["delta_T"]
 
 #Investitionsparameter
-r = parameters["Invest_parameters"]["interest_rate"]
-n = parameters["Invest_parameters"]["lifetime_years"]
+r = parameters["invest_parameters"]["interest_rate"]
+n = parameters["invest_parameters"]["lifetime_years"]
 
-storage_invest_offset = parameters["System_parameters"]["Storage"]["invest_offset_storage"]
-storage_specific_cost = parameters["System_parameters"]["Storage"]["specific_invest_storage"]
+storage_invest_offset = parameters["system_parameters"]["storage"]["invest_offset_storage"]
+storage_specific_cost = parameters["system_parameters"]["storage"]["specific_invest_storage"]
 
-hp_invest_offset = parameters["System_parameters"]["HP"]["invest_offset_hp"]
-hp_specific_cost = parameters["System_parameters"]["HP"]["specific_invest_hp"]
+hp_invest_offset = parameters["system_parameters"]["HP"]["invest_offset_hp"]
+hp_specific_cost = parameters["system_parameters"]["HP"]["specific_invest_hp"]
 
-gas_invest_offset = parameters["System_parameters"]["Gas_boiler"]["invest_offset_boiler"]
-gas_specific_cost = parameters["System_parameters"]["Gas_boiler"]["specific_invest_gas_boiler"]
+gas_invest_offset = parameters["system_parameters"]["gas_boiler"]["invest_offset_boiler"]
+gas_specific_cost = parameters["system_parameters"]["gas_boiler"]["specific_invest_gas_boiler"]
 
-pv_invest_offset = parameters["System_parameters"]["PV"]["invest_offset_pv"]
-pv_specific_cost = parameters["System_parameters"]["PV"]["specific_invest_pv"]
+pv_invest_offset = parameters["system_parameters"]["PV"]["invest_offset_pv"]
+pv_specific_cost = parameters["system_parameters"]["PV"]["specific_invest_pv"]
 
-seasonal_invest_offset = parameters["System_parameters"]["Seasonal_storage"]["invest_offset_seasonal_storage"]
-seasonal_specific_cost = parameters["System_parameters"]["Seasonal_storage"]["specific_invest_seasonal_storage"]
+seasonal_invest_offset = parameters["system_parameters"]["seasonal_storage"]["invest_offset_seasonal_storage"]
+seasonal_specific_cost = parameters["system_parameters"]["seasonal_storage"]["specific_invest_seasonal_storage"]
 
 annuity_factor = r * (1+r)**n / ((1+r)**n - 1)
 
 # Pumpenparameter
-g = parameters["System_parameters"]["Pump"]["gravity"]
-h = parameters["System_parameters"]["Pump"]["del_height"]
-eta_pump = parameters["System_parameters"]["Pump"]["eta_pump"]
+g = parameters["system_parameters"]["pump"]["gravity"]
+h = parameters["system_parameters"]["pump"]["del_height"]
+eta_pump = parameters["system_parameters"]["pump"]["eta_pump"]
 
 P_pump = (g * h) / (eta_pump * cp_w*1000 *delta_T) #MW
 
 # Wärmepumpenparameter
-hp_cap = parameters["System_parameters"]["HP"]["initial_hp_capacity"]
-COP = parameters["System_parameters"]["HP"]["COP"]
+hp_cap = parameters["system_parameters"]["HP"]["initial_hp_capacity"]
+COP = parameters["system_parameters"]["HP"]["COP"]
 
 # Speicherparameter
-max_charge_rate = parameters["System_parameters"]["Storage"]["max_charge_rate"]
-max_discharge_rate = parameters["System_parameters"]["Storage"]["max_discharge_rate"]
-Q_loss = parameters["System_parameters"]["Storage"]["Q_loss"]
-SOC_init = parameters["System_parameters"]["Storage"]["SOC_init"]
-storage_cap = parameters["System_parameters"]["Storage"]["initial_storage_capacity"]
+max_charge_rate = parameters["system_parameters"]["storage"]["max_charge_rate"]
+max_discharge_rate = parameters["system_parameters"]["storage"]["max_discharge_rate"]
+Q_loss = parameters["system_parameters"]["storage"]["Q_loss"]
+SOC_init = parameters["system_parameters"]["storage"]["SOC_init"]
+storage_cap = parameters["system_parameters"]["storage"]["initial_storage_capacity"]
 
 # Gaskesselparameter
-eta_gas_boiler = parameters["System_parameters"]["Gas_boiler"]["eta_gas_boiler"]
-gas_boiler_cap = parameters["System_parameters"]["Gas_boiler"]["initial_gas_thermal_power"]
+eta_gas_boiler = parameters["system_parameters"]["gas_boiler"]["eta_gas_boiler"]
+gas_boiler_cap = parameters["system_parameters"]["gas_boiler"]["initial_gas_thermal_power"]
 
 # PV-Parameter
-pv_cap = parameters["System_parameters"]["PV"]["initial_pv_capacity"]
-feed_in_tariff = parameters["System_parameters"]["PV"]["feed_in_tariff"]
+pv_cap = parameters["system_parameters"]["PV"]["initial_pv_capacity"]
+feed_in_tariff = parameters["system_parameters"]["PV"]["feed_in_tariff"]
 
 # Saisonaler Speicherparameter
-seasonal_cap = parameters["System_parameters"]["Seasonal_storage"]["initial_seasonal_storage_capacity"]
-seasonal_charge_rate = parameters["System_parameters"]["Seasonal_storage"]["max_seasonal_charge_rate"]
-seasonal_discharge_rate = parameters["System_parameters"]["Seasonal_storage"]["max_seasonal_discharge_rate"]
+seasonal_cap = parameters["system_parameters"]["seasonal_storage"]["initial_seasonal_storage_capacity"]
+seasonal_charge_rate = parameters["system_parameters"]["seasonal_storage"]["max_seasonal_charge_rate"]
+seasonal_discharge_rate = parameters["system_parameters"]["seasonal_storage"]["max_seasonal_discharge_rate"]
 
 
 def storage_volume_to_MWh(vol_m3):

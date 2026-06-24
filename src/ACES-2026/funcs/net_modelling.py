@@ -214,10 +214,10 @@ def create_pandapipes_network(G, pn_bar=6.0):
     """
     net = pandapipes.create_empty_network(fluid="water")
     
-    t_supply_k = parameters['Net_parameters']['supply_temperature']+283.15
-    dt_k = parameters['Net_parameters']['delta_T']
-    t_return_k = parameters['Net_parameters']['supply_temperature']+283.15 - dt_k
-    cp_j_per_kgk=parameters['Net_parameters']['cp']
+    t_supply_k = parameters['net_parameters']['supply_temperature']+283.15
+    dt_k = parameters['net_parameters']['delta_T']
+    t_return_k = parameters['net_parameters']['supply_temperature']+283.15 - dt_k
+    cp_j_per_kgk=parameters['net_parameters']['cp']
 
     # 1. Junctions + Übergabeelemente je Knoten
     node_to_jidx_VL = {}
@@ -284,7 +284,7 @@ def create_pandapipes_network(G, pn_bar=6.0):
             alpha_w_per_m2k=alpha,
             text_k=283.15,
             diameter_m=diameter_m,
-            k_mm=0.04,
+            k_mm=parameters['pipe_parameters']['kr'],
         )
         idx_rl = pandapipes.create_pipe_from_parameters(
             net,
@@ -294,7 +294,7 @@ def create_pandapipes_network(G, pn_bar=6.0):
             alpha_w_per_m2k=alpha,
             text_k=283.15,
             diameter_m=diameter_m,
-            k_mm=0.04,
+            k_mm=parameters['pipe_parameters']['kr'],
         )
 
         pipe_pairs.append((idx_vl, idx_rl))
@@ -343,4 +343,3 @@ net, pipe_geoms, pipe_pairs = create_pandapipes_network(graph)
 pandapipes.pipeflow(net)
 
 export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe.gpkg")
-print(f"Anzahl Knoten: {graph.number_of_nodes()}")
