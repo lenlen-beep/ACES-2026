@@ -1,11 +1,13 @@
 from funcs.create_SPL import load_temperature_data, create_bdew_prifles, create_mean_german_building_loads
-from funcs.plots import plot_bdew_profiles, plot_temperatures, plot_prices, plot_charge_discharge_process, \
-                        plot_energy_system_output_sorted, plot_load_w_components, plot_SOC
-from funcs.read_data import read_price_data
+from funcs.plots import plot_bdew_profiles, plot_temperatures, plot_prices, plot_gas_prices, \
+                        plot_charge_discharge_process, plot_energy_system_output_sorted, \
+                        plot_load_w_components, plot_SOC, plot_pv, plot_seasonal_storage
+from funcs.read_data import read_price_data, read_gas_price_data, read_pv_data
 from funcs.energy_system_optimization import optimize_energy_system
 
 import pandas as pd
 import numpy as np
+
 
 # -------------------------------------------------
 # Lastinputs definieren
@@ -13,6 +15,13 @@ import numpy as np
 
 # Nennlast des Wärmenetzes (Gesamt) in MWh (?)
 rated_load = 3e3
+
+# Angabe über mögliche Abwärmequellen (z.B. Industrie, Rechenzentren)
+max_waste_heat_capacity = 0 # MW
+waste_heat_cost = 0 # Euro/MWh
+
+# Kann PV und Saisonalspeicher gebaut werden?
+usable_area = 0 # m2
 
 # Lastverteilung nach Gebäudetyp nach dena Gebäudereport 2024 (Wohngebäudebestand)
 load_EFH, load_MFH = create_mean_german_building_loads(rated_load)
@@ -55,11 +64,35 @@ electricity_price = read_price_data(
 
 
 # --------------------------------------------------
+# Laden der Gaspreise
+# --------------------------------------------------
+
+gas_price = read_gas_price_data(
+    path="src/ACES-2026/Data/",
+    filename="Historic_THE_DA_Pegas.xlsx",
+    load_data=total_load
+)
+
+
+# --------------------------------------------------
+# Laden der Gaspreise
+# --------------------------------------------------
+
+pv = read_pv_data(
+    path="src/ACES-2026/Data/",
+    filename="ninja_pv_54.7833_9.4333_corrected.csv",
+    load_data=total_load
+)
+
+# --------------------------------------------------
 # Energiesystemoptimierung
 # --------------------------------------------------
 
-results, result_df_heatpump, result_df_charge, result_df_discharge, result_df_SOC, \
-    result_storage_capacity = optimize_energy_system(total_load, electricity_price)
+results, result_df_heatpump, result_df_gas_boiler, result_df_charge, result_df_discharge, \
+    result_df_SOC, result_storage_capacity, result_gas_boiler_capacity, result_pv, \
+    result_pv_feed_in, result_pv_capacity, result_seasonal_charge, result_seasonal_discharge, \
+    result_seasonal_soc, result_seasonal_capacity \
+    = optimize_energy_system(total_load, electricity_price, gas_price, pv)
 
 
 # --------------------------------------------------
@@ -67,9 +100,25 @@ results, result_df_heatpump, result_df_charge, result_df_discharge, result_df_SO
 # --------------------------------------------------
 
 plot_prices(electricity_price, show_plot=True)
+plot_gas_prices(gas_price, show_plot=True)
 plot_temperatures(temperature, station_id, show_plot=True)
 plot_bdew_profiles(profiles, total_load, show_plot=True)
-plot_energy_system_output_sorted(total_load, result_df_heatpump, result_df_discharge, show_plot=True)
-plot_load_w_components(result_df_heatpump, result_df_discharge, total_load, show_plot=True)
+
+plot_energy_system_output_sorted(total_load, 
+                                 result_df_heatpump, 
+                                 result_df_discharge, 
+                                 result_df_gas_boiler,
+                                 result_seasonal_discharge, 
+                                 show_plot=True)
+
+plot_load_w_components(result_df_heatpump, 
+                       result_df_discharge, 
+                       result_df_gas_boiler, 
+                       total_load,
+                       result_seasonal_discharge, 
+                       show_plot=True)
+
 plot_charge_discharge_process(result_df_charge, result_df_discharge, result_df_SOC, result_storage_capacity, show_plot=True)
 plot_SOC(result_df_SOC, result_storage_capacity, show_plot=True)
+plot_pv(result_pv, result_pv_feed_in, result_pv_capacity, show_plot=True)
+plot_seasonal_storage(result_seasonal_charge, result_seasonal_discharge, result_seasonal_soc, result_seasonal_capacity, show_plot=True)
