@@ -5,7 +5,17 @@ import pandapipes
 from shapely import set_precision
 from shapely.geometry import LineString
 
-from read_data import read_parameters
+from funcs.data_analysis.test_buildings import load_example_buildings
+
+df = load_example_buildings()
+print(df.head(10))
+print(f"\nForm: {df.shape}  |  NaN gesamt: {df.isna().sum().sum()}")
+
+
+try:
+    from read_data import read_parameters
+except ImportError:
+    from funcs.read_data import read_parameters
 parameters = read_parameters("src/ACES-2026/parameters.yaml")
 
 TARGET_CRS = "EPSG:25832"  # UTM Zone 32N
