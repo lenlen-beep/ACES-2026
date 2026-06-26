@@ -170,7 +170,7 @@ results, result_df_heatpump, result_df_gas_boiler, result_df_charge, result_df_d
     result_df_SOC, result_storage_capacity, result_gas_boiler_capacity, result_pv, \
     result_pv_feed_in, result_pv_capacity, result_seasonal_charge, result_seasonal_discharge, \
     result_seasonal_soc, result_seasonal_capacity \
-    = optimize_energy_system(total_load, electricity_price, gas_price, pv)
+    = optimize_energy_system(load, electricity_price, gas_price, pv)
 
 
 # --------------------------------------------------
@@ -180,9 +180,8 @@ results, result_df_heatpump, result_df_gas_boiler, result_df_charge, result_df_d
 plot_prices(electricity_price, show_plot=True)
 plot_gas_prices(gas_price, show_plot=True)
 plot_temperatures(temperature, station_id, show_plot=True)
-plot_bdew_profiles(profiles, total_load, show_plot=True)
 
-plot_energy_system_output_sorted(total_load, 
+plot_energy_system_output_sorted(load, 
                                  result_df_heatpump, 
                                  result_df_discharge, 
                                  result_df_gas_boiler,
@@ -192,7 +191,7 @@ plot_energy_system_output_sorted(total_load,
 plot_load_w_components(result_df_heatpump, 
                        result_df_discharge, 
                        result_df_gas_boiler, 
-                       total_load,
+                       load,
                        result_seasonal_discharge, 
                        show_plot=True)
 
