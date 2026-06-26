@@ -4,3 +4,6 @@
 *.pyc
 *.csv
 *.gpkg
+*.gpkg-shm
+*.gpkg-wal
+*.png
