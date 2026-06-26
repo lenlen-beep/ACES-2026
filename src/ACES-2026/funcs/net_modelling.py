@@ -101,55 +101,6 @@ def build_graph(gdf, length_col="Length"):
     return G
 
 
-def calc_gzf(G):
-    a = 0.4497
-    b = 0.5512
-    c = 53.84
-    d = 1.76
-
-    # Startknoten (Wärmeübergabestation) finden
-    start_node = None
-    for node, data in G.nodes(data=True):
-        if data.get('Heating Unit') == True:
-            start_node = node
-            break
-    if start_node is None:
-        raise ValueError("Kein Knoten mit 'Heating Unit' = True gefunden.")
-
-    G_copy = G.copy()
-    for u, v, data in list(G.edges(data=True)):
-        if data.get('Connection Load') is not None and data['Connection Load'] > 0:
-            G.edges[u, v]['gzf'] = 1
-            G_copy.remove_edge(u, v)
-
-    leaf_nodes = [node for node in G_copy.nodes
-                  if G_copy.degree[node] == 1 and node != start_node]
-
-    paths = [nx.shortest_path(G_copy, source=node, target=start_node)
-             for node in leaf_nodes]
-
-    for path in paths:
-        n = 0
-        prev_node = None
-        for node in path:
-
-            if 'gzf' in G.nodes[node]:
-                break
-
-            for neighbor in G.neighbors(node):
-                if G[node][neighbor].get('Connection Load', 0) > 0:
-                    n += 1
-
-            gzf = a + b / (1 + (n / c) ** d)
-            G.nodes[node]['gzf'] = gzf
-            if prev_node is not None:
-                G[prev_node][node]['gzf'] = gzf
-
-            prev_node = node
-        
-    return G
-
-
 def test_connectivity(G, snap_tolerance=0.5):
     """
     Prüft, ob der Graph topologisch verbunden ist und ob es geometrische
