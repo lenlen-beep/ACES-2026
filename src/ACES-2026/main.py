@@ -82,9 +82,6 @@ waste_heat_cost = 0 # Euro/MWh
 # Kann PV und Saisonalspeicher gebaut werden?
 usable_area = 0 # m2
 
-# Lastverteilung nach Gebäudetyp nach dena Gebäudereport 2024 (Wohngebäudebestand)
-load_EFH, load_MFH = create_mean_german_building_loads(rated_load)
-
 
 # --------------------------------------------------
 # Laden der Temperaturdaten
@@ -93,23 +90,13 @@ load_EFH, load_MFH = create_mean_german_building_loads(rated_load)
 temperature, weather_df, time_index, station_id = load_temperature_data(
     lat=54.78,
     lon=9.43,
-    year=2024,
+    year=2019,
     reload_data=False
 )
 
 
-# --------------------------------------------------
-# Erstellen der BDEW Lastprofile
-# --------------------------------------------------
-
-# profiles: Einzelne Lastprofile je Gebäudekatiegorien, total_load: Summe der Lastprofile
-profiles, total_load, total_heat_supply = create_bdew_prifles(
-    load_EFH, 
-    load_MFH, 
-    temperature, 
-    time_index
-)
-
+# Referenzindex für 2024-Daten (Preise, PV): Schaltjahr = 8784 h
+ref_2024 = pd.Series(0.0, index=pd.date_range("2024-01-01", periods=8784, freq="1h"))
 
 # --------------------------------------------------
 # Laden und aufbereiten der Strompreise
