@@ -321,8 +321,8 @@ def export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path, crs=TARGET_CRS):
     import pandas as pd
 
     res = net.res_pipe.copy()
-    res['specific_p_loss_bar_per_m'] = (
-        (res['p_from_bar'] - res['p_to_bar']) / (net.pipe['length_km'] * 1000)
+    res['specific_p_loss_pa_per_m'] = (
+        (res['p_from_bar'] - res['p_to_bar']) / (net.pipe['length_km'] * 1000) * 1e5
     )
 
     rows = []
