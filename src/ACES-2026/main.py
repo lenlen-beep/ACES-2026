@@ -4,17 +4,73 @@ from funcs.plots import plot_bdew_profiles, plot_temperatures, plot_prices, plot
                         plot_load_w_components, plot_SOC, plot_pv, plot_seasonal_storage
 from funcs.read_data import read_price_data, read_gas_price_data, read_pv_data
 from funcs.energy_system_optimization import optimize_energy_system
+from funcs.net_modelling import load_network_gpkg, build_graph, test_connectivity, create_pandapipes_network, \
+                                load_example_buildings, export_res_pipe_gpkg, run_timeseries
+from funcs.data_analysis.test_buildings import load_example_buildings
 
+import pandapipes
 import pandas as pd
+
+df = load_example_buildings()
+
+from funcs.read_data import read_parameters
+parameters = read_parameters("src/ACES-2026/parameters.yaml")
+
 import numpy as np
 
 
 # -------------------------------------------------
-# Lastinputs definieren
+# Netzsimulation
 # -------------------------------------------------
 
+# Trassierung importieren
+gdf = load_network_gpkg(
+    path="src/ACES-2026/Data/Trassierung.gpkg",
+    layer="Trassierung",
+)
+
+# Netz bauen
+graph = build_graph(gdf)
+test_connectivity(graph)
+
+net, pipe_geoms, pipe_pairs= create_pandapipes_network(graph)
+
+# Testrechnung
+pandapipes.pipeflow(net)
+print(net.res_circ_pump_pressure)
+export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe.gpkg")
+
+# Gebäudedaten laden
+buildings_df = load_example_buildings()  
+
+# Zeitreihensimulation
+result_df = run_timeseries(net, buildings_df)
+
+print(result_df)
+
+# Spitzenlast filtern
+peak_idx  = result_df['mdot_kg_per_s'].idxmax()
+peak_mass_flow = result_df.loc[peak_idx, 'mdot_kg_per_s']
+peak_date = result_df.loc[peak_idx, 'Datum']
+peak_load = peak_mass_flow * parameters['net_parameters']['cp'] * parameters['net_parameters']['delta_T'] 
+print(f"Spitzenlast: {peak_load:.1f} mit Spitzenmassenstrom: {peak_mass_flow:.4f} kg/s  am  {peak_date}")
+
+# Dauerlinie berechnen
+result_df['load_kW'] = result_df['mdot_kg_per_s'] * parameters['net_parameters']['cp'] * parameters['net_parameters']['delta_T'] 
+
+print(result_df)
+
+# Für die Rohrdimensionierung: Spitzenlastreihe simulieren
+peak_row = df.iloc[[peak_idx]]  # doppelte Klammer → DataFrame statt Series
+print(peak_row)
+
+peak_result_df = run_timeseries(net, peak_row)
+
+export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe_peak.gpkg")
+
+
 # Nennlast des Wärmenetzes (Gesamt) in MWh (?)
-rated_load = 3e3
+load = result_df.set_index('Datum')['load_kW']
 
 # Angabe über mögliche Abwärmequellen (z.B. Industrie, Rechenzentren)
 max_waste_heat_capacity = 0 # MW

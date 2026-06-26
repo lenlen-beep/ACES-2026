@@ -158,6 +158,7 @@ def test_connectivity(G, snap_tolerance=0.5):
     print("========================")
     return nx.is_connected(G) and len(gaps) == 0
 
+
 def create_pandapipes_network(G, pn_bar=6.0):
     """
     Erstellt ein pandapipes-Zweileitungsnetz (Vorlauf + Rücklauf) aus dem
@@ -349,18 +350,3 @@ def export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path, crs=TARGET_CRS):
     gdf_out.index = range(len(gdf_out))
     gdf_out.to_file(path, driver='GPKG')
     print(f"GeoPackage gespeichert: {path}")
-
-
-gdf = load_network_gpkg(
-    path="src/ACES-2026/Data/Trassierung.gpkg",
-    layer="Trassierung",
-)
-
-graph = build_graph(gdf)
-test_connectivity(graph)
-graph = calc_gzf(graph)
-net, pipe_geoms, pipe_pairs = create_pandapipes_network(graph)
-
-pandapipes.pipeflow(net)
-
-export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe.gpkg")
