@@ -19,7 +19,10 @@ import numpy as np
 
 # TODO: load_example_buildings muss durch den richtigen ersetzt werden
 
+# TODO load muss noch korrekt in MW umgerechnet werden (Aktuell in W)
+
 # TODO: Gaspreise jetzt tariflich -> Einlesen der Gaspreise kann weg
+
 
 # -------------------------------------------------
 # Netzsimulation
@@ -71,7 +74,7 @@ peak_result_df = run_timeseries(net, peak_row)
 export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe_peak.gpkg")
 
 
-# Nennlast des Wärmenetzes (Gesamt) in MWh (?)
+# Dauerline
 load = result_df.set_index('Datum')['load_kW']
 
 # Angabe über mögliche Abwärmequellen (z.B. Industrie, Rechenzentren)
