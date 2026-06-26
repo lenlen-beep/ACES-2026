@@ -84,15 +84,10 @@ usable_area = 0 # m2
 
 
 # --------------------------------------------------
-# Laden der Temperaturdaten
+# Laden der Temperaturdaten (nicht nötig, evtl für COP der WP später)
 # --------------------------------------------------
 
-temperature, weather_df, time_index, station_id = load_temperature_data(
-    lat=54.78,
-    lon=9.43,
-    year=2019,
-    reload_data=False
-)
+temperature = load_temperature_data(year=2019, lat=54.78, lon=9.43)
 
 
 # Referenzindex für 2024-Daten (Preise, PV): Schaltjahr = 8784 h
@@ -166,7 +161,7 @@ results, result_df_heatpump, result_df_gas_boiler, result_df_charge, result_df_d
 
 plot_prices(electricity_price, show_plot=True)
 plot_gas_prices(gas_price, show_plot=True)
-plot_temperatures(temperature, station_id, show_plot=True)
+plot_temperatures(temperature, station_id="Flensburg", show_plot=True)
 
 plot_energy_system_output_sorted(load, 
                                  result_df_heatpump, 
