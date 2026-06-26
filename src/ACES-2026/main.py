@@ -152,7 +152,12 @@ results, result_df_heatpump, result_df_gas_boiler, result_df_charge, result_df_d
     result_df_SOC, result_storage_capacity, result_gas_boiler_capacity, result_pv, \
     result_pv_feed_in, result_pv_capacity, result_seasonal_charge, result_seasonal_discharge, \
     result_seasonal_soc, result_seasonal_capacity \
-    = optimize_energy_system(load, electricity_price, gas_price, pv)
+    = optimize_energy_system(
+        load, electricity_price, gas_price, pv,
+        elec_price_mode="spot",       # "spot" | "tariff" | "hedge"
+        elec_hedge_share=0.0,         # Anteil Festpreis bei mode="hedge" (0–1)
+        gas_price_mode="spot",        # "spot" | "tariff"
+    )
 
 
 # --------------------------------------------------
