@@ -78,7 +78,7 @@ price_parameters:                 # SH-Netz 2025
       stress: 12.2
 
 pipe_parameters:
-  kr: 0.4                         # mm
+  kr: 0.04                         # mm
   specific_pressure_loss: 150     # Pa/m
   pipe_models:
     - DN: 20
