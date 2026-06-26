@@ -292,12 +292,12 @@ def optimize_energy_system(demand, electricity_price, gas_price, pv):
 
     def seasonal_storage_rule(m, t):
         seasonal_MWh = storage_volume_to_MWh(m.seasonal_capacity)
+        initial_soc  = 0.5 * seasonal_MWh
         if t == 0:
-            return m.SOC_seasonal[t] == 0.5 * seasonal_MWh   # startet halbvoll
+            return m.SOC_seasonal[t] == initial_soc + m.seasonal_charge[t] - m.seasonal_discharge[t]
         return m.SOC_seasonal[t] == (m.SOC_seasonal[t-1]
                                     + m.seasonal_charge[t]
                                     - m.seasonal_discharge[t])
-                                    #- Q_loss_seasonal)       # geringere Verluste als Puffer
     model.seasonal_storage = pyo.Constraint(model.T, rule=seasonal_storage_rule)
 
     def seasonal_soc_limit(m, t):
