@@ -255,6 +255,64 @@ def create_pandapipes_network(G, pn_bar=6.0):
 
     return net, pipe_geoms, pipe_pairs
 
+def run_timeseries(net, buildings_df, building_cols=None):
+    """
+    Zeitreihensimulation: für jeden Zeitstempel werden die Gebäudelasten
+    in Heat Exchanger und Flow Control geschrieben und pipeflow ausgeführt.
+
+    Parameter
+    ----------
+    net           : pandapipes-Netz (aus create_pandapipes_network)
+    buildings_df  : DataFrame mit Spalte 'Datum' und je einer Lastspalte
+                    pro Gebäude [kW]
+    building_cols : Liste der Lastspalten (default: alle außer 'Datum')
+
+    Rückgabe
+    --------
+    DataFrame mit Spalten 'Datum' und 'mdot_kg_per_s' (Pumpenmassenstrom)
+    """
+    import pandas as pd
+
+    cp    = parameters['net_parameters']['cp']
+    dt_k  = parameters['net_parameters']['delta_T']
+
+    if building_cols is None:
+        building_cols = [c for c in buildings_df.columns if c != 'Datum']
+
+    hx_idx = net.heat_exchanger.index.tolist()
+    fc_idx = net.flow_control.index.tolist()
+
+    if len(building_cols) != len(hx_idx):
+        raise ValueError(
+            f"{len(building_cols)} Gebäudespalten, aber {len(hx_idx)} Heat Exchanger im Netz."
+        )
+
+    records = []
+    n = len(buildings_df)
+
+    for i, (_, row) in enumerate(buildings_df.iterrows()):
+        for j, col in enumerate(building_cols):
+            qext_w = float(row[col]) * 1000.0          # kW → W
+            mdot   = qext_w / (cp * dt_k)
+            net.heat_exchanger.at[hx_idx[j], 'qext_w']                          = qext_w
+            net.flow_control.at[fc_idx[j],   'controlled_mdot_kg_per_s']        = mdot
+
+        try:
+            pandapipes.pipeflow(net)
+            pump_mdot = float(net.res_circ_pump_pressure['mdot_from_kg_per_s'].sum())
+        except Exception as e:
+            if i == 0:
+                print(f"  pipeflow Fehler (Zeitschritt 0): {e}")
+            pump_mdot = float('nan')
+
+        records.append({'Datum': row['Datum'], 'mdot_kg_per_s': pump_mdot})
+
+        if (i + 1) % 500 == 0 or (i + 1) == n:
+            print(f"  {i + 1}/{n} Zeitschritte simuliert …")
+
+    return pd.DataFrame(records)
+
+
 def export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path, crs=TARGET_CRS):
     """
     Exportiert net.res_pipe als GeoPackage mit VL- und RL-Ergebnissen als getrennte Spalten.
