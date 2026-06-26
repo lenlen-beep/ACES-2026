@@ -18,6 +18,8 @@ except ImportError:
     from funcs.read_data import read_parameters
 parameters = read_parameters("src/ACES-2026/parameters.yaml")
 
+# TODO: Bodentemperatur variabel?
+
 TARGET_CRS = "EPSG:25832"  # UTM Zone 32N
 COORD_PRECISION = 0.01      # [m] — auf cm runden, damit Endpunkte topologisch übereinstimmen
 
