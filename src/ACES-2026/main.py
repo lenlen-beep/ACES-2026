@@ -18,6 +18,9 @@ parameters = read_parameters("src/ACES-2026/parameters.yaml")
 
 import numpy as np
 
+# TODO: load_example_buildings muss durch den richtigen ersetzt werden
+
+# TODO: Gaspreise jetzt tariflich -> Einlesen der Gaspreise kann weg
 
 # -------------------------------------------------
 # Netzsimulation
