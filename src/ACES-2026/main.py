@@ -4,13 +4,11 @@ from funcs.plots import plot_temperatures, plot_prices, plot_gas_prices, \
 from funcs.read_data import read_price_data, read_gas_price_data, read_pv_data, load_temperature_data
 from funcs.energy_system_optimization import optimize_energy_system
 from funcs.net_modelling import load_network_gpkg, build_graph, test_connectivity, create_pandapipes_network, \
-                                load_example_buildings, export_res_pipe_gpkg, run_timeseries
+                                export_res_pipe_gpkg, run_timeseries
 from funcs.data_analysis.test_buildings import load_example_buildings
 
 import pandapipes
 import pandas as pd
-
-df = load_example_buildings()
 
 from funcs.read_data import read_parameters
 parameters = read_parameters("src/ACES-2026/parameters.yaml")
@@ -66,7 +64,7 @@ result_df['load_kW'] = result_df['mdot_kg_per_s'] * parameters['net_parameters']
 print(result_df)
 
 # Für die Rohrdimensionierung: Spitzenlastreihe simulieren
-peak_row = df.iloc[[peak_idx]]  # doppelte Klammer → DataFrame statt Series
+peak_row = buildings_df.iloc[[peak_idx]]  # doppelte Klammer → DataFrame statt Series
 print(peak_row)
 
 peak_result_df = run_timeseries(net, peak_row)
