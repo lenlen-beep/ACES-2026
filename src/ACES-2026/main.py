@@ -118,30 +118,49 @@ profiles, total_load, total_heat_supply = create_bdew_prifles(
 electricity_price = read_price_data(
     path="src/ACES-2026/Data/",
     filename="Gro_handelspreise_202401010000_202501010000_Stunde.xlsx",
-    load_data=total_load
+    load_data=ref_2024
 )
 
 
 # --------------------------------------------------
-# Laden der Gaspreise
+# Laden der Gaspreise                                      #!
 # --------------------------------------------------
 
 gas_price = read_gas_price_data(
     path="src/ACES-2026/Data/",
     filename="Historic_THE_DA_Pegas.xlsx",
-    load_data=total_load
+    load_data=ref_2024
 )
 
 
 # --------------------------------------------------
-# Laden der Gaspreise
+# Laden der PV-Daten
 # --------------------------------------------------
 
 pv = read_pv_data(
     path="src/ACES-2026/Data/",
     filename="ninja_pv_54.7833_9.4333_corrected.csv",
-    load_data=total_load
+    load_data=ref_2024
 )
+
+# --------------------------------------------------
+# Schalttag entfernen + Wochenprofil synchronisieren
+# --------------------------------------------------
+# Strom-/Gaspreise und PV liegen auf 2024-Achse (8784 h, startet Mo).
+# Load ist 2019-Netzberechnung (8760 h, startet Di).
+#   1. Feb 29 aus allen drei entfernen → 8760 h
+#   2. Strompreise um 24 h rotieren: Mo → Di = passt zu 2019-Wochenprofil
+
+feb29 = ~((ref_2024.index.month == 2) & (ref_2024.index.day == 29))
+
+electricity_price = electricity_price[feb29]
+gas_price         = gas_price[feb29]
+pv                = pv[feb29]
+
+# Ersten Tag (Mo, 1.1.2024, 24 h) ans Ende → beide Preisreihen starten Di (= 2019)
+electricity_price = np.concatenate([electricity_price[24:], electricity_price[:24]])
+gas_price         = np.concatenate([gas_price[24:],         gas_price[:24]])
+
 
 # --------------------------------------------------
 # Energiesystemoptimierung
