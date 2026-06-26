@@ -5,13 +5,6 @@ import pandapipes
 from shapely import set_precision
 from shapely.geometry import LineString
 
-from funcs.data_analysis.test_buildings import load_example_buildings
-
-df = load_example_buildings()
-print(df.head(10))
-print(f"\nForm: {df.shape}  |  NaN gesamt: {df.isna().sum().sum()}")
-
-
 try:
     from read_data import read_parameters
 except ImportError:
@@ -267,6 +260,7 @@ def create_pandapipes_network(G, pn_bar=6.0):
             pipe_geoms[idx_rl] = LineString(list(reversed(list(geom.coords))))
 
     return net, pipe_geoms, pipe_pairs
+
 
 def run_timeseries(net, buildings_df, building_cols=None):
     """

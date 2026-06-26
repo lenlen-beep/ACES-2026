@@ -90,6 +90,7 @@ def read_pv_data(path, filename, load_data):
     return df["electricity"].values
 
 
+
 #-------------------------------------------------------------------------
 # Temperaturdaten laden
 #-------------------------------------------------------------------------
