@@ -165,9 +165,9 @@ def create_pandapipes_network(G, pn_bar=6.0):
     """
     net = pandapipes.create_empty_network(fluid="water")
     
-    t_supply_k = parameters['net_parameters']['supply_temperature']+283.15
+    t_supply_k = parameters['net_parameters']['supply_temperature']+273.15
     dt_k = parameters['net_parameters']['delta_T']
-    t_return_k = parameters['net_parameters']['supply_temperature']+283.15 - dt_k
+    t_return_k = parameters['net_parameters']['supply_temperature']+273.15 - dt_k
     cp_j_per_kgk=parameters['net_parameters']['cp']
 
     # 1. Junctions + Übergabeelemente je Knoten
