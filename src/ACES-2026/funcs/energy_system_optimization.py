@@ -6,6 +6,10 @@ from .read_data import read_parameters
     # TODO:Der Speicher kann bei SOC = 0 keine Wärme verlieren (theoretisch aber schon, da 55°C RLT) 
     # --> beachten :)
 
+    # TODO: Gas tariflich 
+
+    # TODO: Strom hedge variabel machen (erstmal nachrangig)
+
 
 """
 Optimierung eines Fernwärmesystems mit Wärmepumpe und thermischem Pufferspeicher.
