@@ -1,8 +1,7 @@
-from funcs.create_SPL import load_temperature_data, create_bdew_prifles, create_mean_german_building_loads
-from funcs.plots import plot_bdew_profiles, plot_temperatures, plot_prices, plot_gas_prices, \
+from funcs.plots import plot_temperatures, plot_prices, plot_gas_prices, \
                         plot_charge_discharge_process, plot_energy_system_output_sorted, \
                         plot_load_w_components, plot_SOC, plot_pv, plot_seasonal_storage
-from funcs.read_data import read_price_data, read_gas_price_data, read_pv_data
+from funcs.read_data import read_price_data, read_gas_price_data, read_pv_data, load_temperature_data
 from funcs.energy_system_optimization import optimize_energy_system
 from funcs.net_modelling import load_network_gpkg, build_graph, test_connectivity, create_pandapipes_network, \
                                 load_example_buildings, export_res_pipe_gpkg, run_timeseries
