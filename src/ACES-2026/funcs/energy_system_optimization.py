@@ -6,6 +6,10 @@ from .read_data import read_parameters
     # TODO:Der Speicher kann bei SOC = 0 keine Wärme verlieren (theoretisch aber schon, da 55°C RLT) 
     # --> beachten :)
 
+    # TODO: Gas tariflich 
+
+    # TODO: Strom hedge variabel machen (erstmal nachrangig)
+
 
 """
 Optimierung eines Fernwärmesystems mit Wärmepumpe und thermischem Pufferspeicher.
@@ -97,11 +101,39 @@ def storage_volume_to_MWh(vol_m3):
     return vol_m3 * rho_w * cp_w * delta_T / 3_600_000.0  # MWh
 
 
-def optimize_energy_system(demand, electricity_price, gas_price, pv):
-
+def optimize_energy_system(
+    demand,
+    electricity_price,
+    gas_price,
+    pv,
+    elec_price_mode: str = "spot",
+    elec_hedge_share: float = 0.0,
+    gas_price_mode: str = "spot",
+):
+    """
+    elec_price_mode  : "spot"   – Spotpreisreihe (electricity_price)
+                       "tariff" – Festpreis aus parameters.yaml (price_parameters.electricity.tarif.usual_mid)
+                       "hedge"  – Mischung: elec_hedge_share * Tarif + (1-elec_hedge_share) * Spot
+    elec_hedge_share : Anteil Festpreis bei mode="hedge", z.B. 0.3 = 30 % Tarif, 70 % Spot
+    gas_price_mode   : "spot"   – Spotpreisreihe (gas_price)
+                       "tariff" – Festpreis aus parameters.yaml (price_parameters.gas.tarif.usual_mid)
+    """
     demand = demand.values
-
     T = range(len(demand))
+
+    # Strompreis aufbereiten (Einheit: €/MWh)
+    elec_tariff_eur_per_mwh = parameters["price_parameters"]["electricity"]["tarif"]["usual_mid"] * 10  # ct/kWh → €/MWh
+    if elec_price_mode == "tariff":
+        electricity_price = np.full(len(T), elec_tariff_eur_per_mwh)
+    elif elec_price_mode == "hedge":
+        electricity_price = elec_hedge_share * elec_tariff_eur_per_mwh + (1 - elec_hedge_share) * electricity_price
+    # else: "spot" → electricity_price unverändert
+
+    # Gaspreis aufbereiten (Einheit: €/MWh)
+    gas_tariff_eur_per_mwh = parameters["price_parameters"]["gas"]["tarif"]["usual_mid"] * 10  # ct/kWh → €/MWh
+    if gas_price_mode == "tariff":
+        gas_price = np.full(len(T), gas_tariff_eur_per_mwh)
+    # else: "spot" → gas_price unverändert
 
     # Warnung, wenn Vorlauftemperatur zu hoch ist (Speicher ungeeignet)
     if s_temp > 95:
@@ -145,7 +177,6 @@ def optimize_energy_system(demand, electricity_price, gas_price, pv):
     model.seasonal_discharge = pyo.Var(model.T, bounds=(0, None))  # MW
     model.SOC_seasonal       = pyo.Var(model.T, bounds=(0, None))  # MWh
     model.seasonal_capacity  = pyo.Var(bounds=(0, None), initialize=seasonal_cap)  # m³
-
 
 
     # --------------------------------
@@ -292,12 +323,12 @@ def optimize_energy_system(demand, electricity_price, gas_price, pv):
 
     def seasonal_storage_rule(m, t):
         seasonal_MWh = storage_volume_to_MWh(m.seasonal_capacity)
+        initial_soc  = 0.5 * seasonal_MWh
         if t == 0:
-            return m.SOC_seasonal[t] == 0.5 * seasonal_MWh   # startet halbvoll
+            return m.SOC_seasonal[t] == initial_soc + m.seasonal_charge[t] - m.seasonal_discharge[t]
         return m.SOC_seasonal[t] == (m.SOC_seasonal[t-1]
                                     + m.seasonal_charge[t]
                                     - m.seasonal_discharge[t])
-                                    #- Q_loss_seasonal)       # geringere Verluste als Puffer
     model.seasonal_storage = pyo.Constraint(model.T, rule=seasonal_storage_rule)
 
     def seasonal_soc_limit(m, t):

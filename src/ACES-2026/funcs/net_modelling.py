@@ -5,8 +5,13 @@ import pandapipes
 from shapely import set_precision
 from shapely.geometry import LineString
 
-from read_data import read_parameters
+try:
+    from read_data import read_parameters
+except ImportError:
+    from funcs.read_data import read_parameters
 parameters = read_parameters("src/ACES-2026/parameters.yaml")
+
+# TODO: Bodentemperatur variabel?
 
 TARGET_CRS = "EPSG:25832"  # UTM Zone 32N
 COORD_PRECISION = 0.01      # [m] — auf cm runden, damit Endpunkte topologisch übereinstimmen
@@ -101,55 +106,6 @@ def build_graph(gdf, length_col="Length"):
     return G
 
 
-def calc_gzf(G):
-    a = 0.4497
-    b = 0.5512
-    c = 53.84
-    d = 1.76
-
-    # Startknoten (Wärmeübergabestation) finden
-    start_node = None
-    for node, data in G.nodes(data=True):
-        if data.get('Heating Unit') == True:
-            start_node = node
-            break
-    if start_node is None:
-        raise ValueError("Kein Knoten mit 'Heating Unit' = True gefunden.")
-
-    G_copy = G.copy()
-    for u, v, data in list(G.edges(data=True)):
-        if data.get('Connection Load') is not None and data['Connection Load'] > 0:
-            G.edges[u, v]['gzf'] = 1
-            G_copy.remove_edge(u, v)
-
-    leaf_nodes = [node for node in G_copy.nodes
-                  if G_copy.degree[node] == 1 and node != start_node]
-
-    paths = [nx.shortest_path(G_copy, source=node, target=start_node)
-             for node in leaf_nodes]
-
-    for path in paths:
-        n = 0
-        prev_node = None
-        for node in path:
-
-            if 'gzf' in G.nodes[node]:
-                break
-
-            for neighbor in G.neighbors(node):
-                if G[node][neighbor].get('Connection Load', 0) > 0:
-                    n += 1
-
-            gzf = a + b / (1 + (n / c) ** d)
-            G.nodes[node]['gzf'] = gzf
-            if prev_node is not None:
-                G[prev_node][node]['gzf'] = gzf
-
-            prev_node = node
-        
-    return G
-
-
 def test_connectivity(G, snap_tolerance=0.5):
     """
     Prüft, ob der Graph topologisch verbunden ist und ob es geometrische
@@ -195,6 +151,7 @@ def test_connectivity(G, snap_tolerance=0.5):
     print("========================")
     return nx.is_connected(G) and len(gaps) == 0
 
+
 def create_pandapipes_network(G, pn_bar=6.0):
     """
     Erstellt ein pandapipes-Zweileitungsnetz (Vorlauf + Rücklauf) aus dem
@@ -214,9 +171,9 @@ def create_pandapipes_network(G, pn_bar=6.0):
     """
     net = pandapipes.create_empty_network(fluid="water")
     
-    t_supply_k = parameters['net_parameters']['supply_temperature']+283.15
+    t_supply_k = parameters['net_parameters']['supply_temperature']+273.15
     dt_k = parameters['net_parameters']['delta_T']
-    t_return_k = parameters['net_parameters']['supply_temperature']+283.15 - dt_k
+    t_return_k = parameters['net_parameters']['supply_temperature']+273.15 - dt_k
     cp_j_per_kgk=parameters['net_parameters']['cp']
 
     # 1. Junctions + Übergabeelemente je Knoten
@@ -304,6 +261,65 @@ def create_pandapipes_network(G, pn_bar=6.0):
 
     return net, pipe_geoms, pipe_pairs
 
+
+def run_timeseries(net, buildings_df, building_cols=None):
+    """
+    Zeitreihensimulation: für jeden Zeitstempel werden die Gebäudelasten
+    in Heat Exchanger und Flow Control geschrieben und pipeflow ausgeführt.
+
+    Parameter
+    ----------
+    net           : pandapipes-Netz (aus create_pandapipes_network)
+    buildings_df  : DataFrame mit Spalte 'Datum' und je einer Lastspalte
+                    pro Gebäude [kW]
+    building_cols : Liste der Lastspalten (default: alle außer 'Datum')
+
+    Rückgabe
+    --------
+    DataFrame mit Spalten 'Datum' und 'mdot_kg_per_s' (Pumpenmassenstrom)
+    """
+    import pandas as pd
+
+    cp    = parameters['net_parameters']['cp']
+    dt_k  = parameters['net_parameters']['delta_T']
+
+    if building_cols is None:
+        building_cols = [c for c in buildings_df.columns if c != 'Datum']
+
+    hx_idx = net.heat_exchanger.index.tolist()
+    fc_idx = net.flow_control.index.tolist()
+
+    if len(building_cols) != len(hx_idx):
+        raise ValueError(
+            f"{len(building_cols)} Gebäudespalten, aber {len(hx_idx)} Heat Exchanger im Netz."
+        )
+
+    records = []
+    n = len(buildings_df)
+
+    for i, (_, row) in enumerate(buildings_df.iterrows()):
+        for j, col in enumerate(building_cols):
+            qext_w = float(row[col]) * 1000.0          # kW → W
+            mdot   = qext_w / (cp * dt_k)
+            net.heat_exchanger.at[hx_idx[j], 'qext_w']                          = qext_w
+            net.flow_control.at[fc_idx[j],   'controlled_mdot_kg_per_s']        = mdot
+
+        try:
+            pandapipes.pipeflow(net)
+            pump_mdot = float(net.res_circ_pump_pressure['mdot_from_kg_per_s'].sum())
+        except Exception as e:
+            if i == 0:
+                print(f"  pipeflow Fehler (Zeitschritt 0): {e}")
+            pump_mdot = float('nan')
+
+        records.append({'Datum': row['Datum'], 'mdot_kg_per_s': pump_mdot})
+
+        if (i + 1) % 500 == 0 or (i + 1) == n:
+            print(f"  {i + 1}/{n} Zeitschritte simuliert …")
+
+    return pd.DataFrame(records)
+
+
 def export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path, crs=TARGET_CRS):
     """
     Exportiert net.res_pipe als GeoPackage mit VL- und RL-Ergebnissen als getrennte Spalten.
@@ -312,8 +328,8 @@ def export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path, crs=TARGET_CRS):
     import pandas as pd
 
     res = net.res_pipe.copy()
-    res['specific_p_loss_bar_per_m'] = (
-        (res['p_from_bar'] - res['p_to_bar']) / (net.pipe['length_km'] * 1000)
+    res['specific_p_loss_pa_per_m'] = (
+        (res['p_from_bar'] - res['p_to_bar']) / (net.pipe['length_km'] * 1000) * 1e5
     )
 
     rows = []
@@ -328,18 +344,3 @@ def export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path, crs=TARGET_CRS):
     gdf_out.index = range(len(gdf_out))
     gdf_out.to_file(path, driver='GPKG')
     print(f"GeoPackage gespeichert: {path}")
-
-
-gdf = load_network_gpkg(
-    path="src/ACES-2026/Data/Trassierung.gpkg",
-    layer="Trassierung",
-)
-
-graph = build_graph(gdf)
-test_connectivity(graph)
-graph = calc_gzf(graph)
-net, pipe_geoms, pipe_pairs = create_pandapipes_network(graph)
-
-pandapipes.pipeflow(net)
-
-export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe.gpkg")

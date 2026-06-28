@@ -30,8 +30,8 @@ system_parameters:
   gas_boiler:
     eta_gas_boiler: 0.98
     initial_gas_thermal_power: 30 # MW
-    specific_invest_gas_boiler: 2690  # Euro/MW
-    invest_offset_boiler: 0       # Euro
+    specific_invest_gas_boiler: 60000  # Euro/MW
+    invest_offset_boiler: 30000       # Euro
 
   seasonal_storage:               # PTES / Grubenspeicher
     invest_offset_seasonal_storage: 892300   # Euro
@@ -78,7 +78,7 @@ price_parameters:                 # SH-Netz 2025
       stress: 12.2
 
 pipe_parameters:
-  kr: 0.4                         # mm
+  kr: 0.04                         # mm
   specific_pressure_loss: 150     # Pa/m
   pipe_models:
     - DN: 20

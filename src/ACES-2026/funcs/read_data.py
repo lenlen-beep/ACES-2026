@@ -68,6 +68,7 @@ def read_gas_price_data(path, filename, load_data):
 
     return df['Settlement'].values
 
+
 #-------------------------------------------------------------------------
 # Einlesen der Solardaten (renewables.ninja, stündlich)
 #-------------------------------------------------------------------------
@@ -88,31 +89,7 @@ def read_pv_data(path, filename, load_data):
 
     return df["electricity"].values
 
-#-------------------------------------------------------------------------
-# Einlesen Wärmedaten (Flensburg 2014–2024, stündlich)
-#-------------------------------------------------------------------------
-def read_heat_data_FL(scale_factor=1.0):
-    load_file_2014_2016 = r"src/ACES2026/Data/district-heating-network-data-flensburg-2014-2016.csv"
-    load_file_2017_2019 = r"src/ACES2026/Data/2017-2019 Stadtwerke Flensburg Heat Network Data Hourly.xlsx"
-    load_file_2020_2024 = r"src/ACES2026/Data/2020-2024 Stadtwerke Flensburg Heat Network Data Hourly.xlsx"
 
-    df_2014_2016 = pd.read_csv(load_file_2014_2016, header=0,
-                                usecols=['Datetime', 'Overall heat load in MW'])
-    df_2014_2016.rename(columns={'Datetime': 'Datum',
-                                'Overall heat load in MW': 'Wärmeleistung in MW'}, inplace=True)
-    df_2014_2016['Datum'] = pd.to_datetime(df_2014_2016['Datum'], format='%d/%m/%y %H:%M')
-    df_2017_2019 = pd.read_excel(load_file_2017_2019, skiprows=1, header=0, usecols=[0, 1])
-    df_2017_2019.columns = ['Datum', 'Wärmeleistung in MW']
-    df_2017_2019['Datum'] = pd.to_datetime(df_2017_2019['Datum'])
-    df_2020_2024 = pd.read_excel(load_file_2020_2024, skiprows=1, header=0, usecols=[0, 1])
-    df_2020_2024.columns = ['Datum', 'Wärmeleistung in MW']
-    df_2020_2024['Datum'] = pd.to_datetime(df_2020_2024['Datum'])
-
-    df_load = pd.concat([df_2014_2016, df_2017_2019, df_2020_2024], ignore_index=True)
-    df_load['Wärmeleistung in MW'] = pd.to_numeric(df_load['Wärmeleistung in MW'], errors='coerce')
-    df_load = df_load.set_index('Datum').sort_index()
-    df_load['Wärmeleistung in MW'] *= scale_factor
-    return df_load
 
 #-------------------------------------------------------------------------
 # Temperaturdaten laden
@@ -133,27 +110,10 @@ def load_temperature_data(year, lat=LAT, lon=LON, cache_dir=CACHE_DIR):
                                datetime(year, 12, 31, 23, 59)).fetch()
         df.to_csv(filepath)
 
-    return df["temp"]
+    index = pd.date_range(start=f"{year}-01-01", end=f"{year}-12-31 23:00", freq="1h")
+    temp  = df["temp"].reindex(index).interpolate(method="time").bfill().ffill()
+    return temp
 
-
-#-------------------------------------------------------------------------
-# Wärme- und Temperaturdaten zusammenführen
-#-------------------------------------------------------------------------
-
-def join_heat_and_temp_data(df_load, df_T):
-    df = df_load.join(df_T.rename('Temperatur °C'), how='inner').dropna()
-    df = df[df['Wärmeleistung in MW'] > 0]
-    df['Jahr'] = df.index.year
-
-    T_arr = df['Temperatur °C'].values
-    Q_arr = df['Wärmeleistung in MW'].values
-    N_m   = len(T_arr)
-
-    # Absolute Stunden-Indizes für den gemergten Ausschnitt (relativ zu 2014-01-01)
-    x_abs = ((df.index - pd.Timestamp('2014-01-01')).total_seconds() / 3600).values
-    print(f"Gemeinsame Datenpunkte: {N_m}  ({N_m/8760:.1f} Jahre)")
-
-    return df, T_arr, Q_arr, x_abs
 
 
 
