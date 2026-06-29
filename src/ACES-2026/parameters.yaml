@@ -25,13 +25,13 @@ system_parameters:
     COP: 3.5
     initial_hp_capacity: 30       # MW
     invest_offset_hp: 0           # Euro
-    specific_invest_hp: 700000    # Euro/MW
+    specific_invest_hp: 1200000    # Euro/MW
 
   gas_boiler:
     eta_gas_boiler: 0.98
     initial_gas_thermal_power: 30 # MW
     specific_invest_gas_boiler: 60000  # Euro/MW
-    invest_offset_boiler: 30000       # Euro
+    invest_offset_boiler: 0       # Euro
 
   seasonal_storage:               # PTES / Grubenspeicher
     invest_offset_seasonal_storage: 892300   # Euro
