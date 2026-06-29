@@ -93,6 +93,9 @@ INTERP_MAX_GAP_HOURS = 6
 # Output
 OUT_LONG = os.path.join(DATA_DIR, "selected_267_profiles_2019_long.csv")
 OUT_META = os.path.join(DATA_DIR, "selected_267_profiles_meta.csv")
+# Wide-Format: Datum + Smart-Meter 1..267 (1 = höchster Jahresverbrauch),
+# stündliche kW-Werte. Keine echte meter_id / unit_type / annual_kwh.
+OUT_WIDE = os.path.join(DATA_DIR, "selected_267_profiles_2019_wide.csv")
 
 # Plot-Style
 plt.rcParams.update({
@@ -754,6 +757,17 @@ def main():
     out_long = out_long[["datetime", "meter_id", "unit_type", "annual_kwh_2019", "effekt1_kw"]]
     out_long.to_csv(OUT_LONG, index=False)
 
+    # --- Output Wide-CSV: Datum + Smart-Meter 1..267 ---
+    # Spalten = Smart-Meter, sortiert nach Jahresverbrauch absteigend und
+    # durchnummeriert (1 = höchster Jahresverbrauch, 267 = niedrigster).
+    # Jede Zeile = eine Stunde des Jahres, Werte = stündliche kW.
+    # Keine echte meter_id / unit_type / annual_kwh.
+    wide_order = [m for m in sort_order if m in df_sel.columns]
+    df_wide = df_sel.reindex(columns=wide_order).copy()
+    df_wide.columns = range(1, len(wide_order) + 1)
+    df_wide = df_wide.reset_index().rename(columns={"datetime": "Datum"})
+    df_wide.to_csv(OUT_WIDE, index=False)
+
     # --- Output Meta-CSV [9][10] ---
     meta_out = (
         meta_sample
@@ -771,6 +785,7 @@ def main():
 
     print("\nGespeichert:")
     print(f"  Profile (long): {OUT_LONG}")
+    print(f"  Profile (wide): {OUT_WIDE}")
     print(f"  Meta:           {OUT_META}")
 
     # --- Plots für die 267 Meter [11] ---
