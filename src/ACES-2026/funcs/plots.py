@@ -20,32 +20,6 @@ def plot_temperatures(temperature, station_id, show_plot=True):
         plt.show()
 
 
-# --------------------------------------------------
-# BDEW Lastprofile plotten
-# --------------------------------------------------
-
-def plot_bdew_profiles(profiles, total_load, show_plot=True):
-    plt.figure(figsize=(12,5))
-
-    for name, profile in profiles.items():
-        plt.plot(profile, label=name, alpha=0.7)
-
-    plt.plot(
-        total_load,
-        label="Total",
-        linewidth=2
-    )
-
-    plt.legend()
-    plt.grid()
-    plt.title("BDEW Heat Profiles")
-
-    plt.xlabel("Zeit in h")
-    plt.ylabel("Leistung in MW")
-
-    if show_plot:
-        plt.show()
-
 
 # --------------------------------------------------
 # Strompreise plotten
