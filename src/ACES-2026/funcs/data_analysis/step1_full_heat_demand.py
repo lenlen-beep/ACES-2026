@@ -52,7 +52,7 @@ import matplotlib.dates as mdates
 # 0) KONFIGURATION – hier anpassen
 # =============================================================================
 
-DATA_DIR = r"/Users/nele/Documents/GitHub/ACES-2026/src/ACES-2026/Data/Aalborg_smart_meter_data"
+DATA_DIR = r"src/ACES-2026/Data/Aalborg_smart_meter_data"
 CONTEXT_FILENAME = "contextual_data.csv"
 
 # Smart-Meter Spalten

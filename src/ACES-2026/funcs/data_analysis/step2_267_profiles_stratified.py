@@ -56,7 +56,7 @@ from scipy import stats as scipy_stats
 # 0) KONFIGURATION
 # =============================================================================
 
-DATA_DIR = r"/Users/nele/Documents/GitHub/ACES-2026/src/ACES-2026/Data/Aalborg_smart_meter_data"
+DATA_DIR = r"src/ACES-2026/Data/Aalborg_smart_meter_data"
 CONTEXT_FILENAME = "contextual_data.csv"
 
 # Smart-Meter Spalten
