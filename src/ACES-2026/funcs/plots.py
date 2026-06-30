@@ -20,7 +20,6 @@ def plot_temperatures(temperature, station_id, show_plot=True):
         plt.show()
 
 
-
 # --------------------------------------------------
 # Strompreise plotten
 # --------------------------------------------------
@@ -151,6 +150,52 @@ def plot_SOC(SOC_res, storage_cap_res, show_plot=True):
     plt.legend()
     plt.grid()
 
+    if show_plot:
+        plt.show()
+
+
+# --------------------------------------------------
+# Netzverluste plotten
+# --------------------------------------------------
+
+def plot_network_losses(result_df, show_plot=True):
+    datum        = result_df['Datum'] if 'Datum' in result_df.columns else result_df.index
+    total_kw     = result_df['load_kW'].values
+    consumer_kw  = result_df['consumer_load_kW'].values
+    loss_kw      = result_df['net_loss_kW'].values
+
+    jahres_MWh   = total_kw.sum()    / 1000
+    gebaeude_MWh = consumer_kw.sum() / 1000
+    verlust_MWh  = loss_kw.sum()     / 1000
+    anteil_pct   = verlust_MWh / jahres_MWh * 100
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+    fig.suptitle(
+        f"Netzverluste — Jahresgesamtverbrauch: {jahres_MWh:,.0f} MWh/a  |  "
+        f"Netzverluste: {verlust_MWh:,.0f} MWh/a ({anteil_pct:.1f} %)",
+        fontsize=13, fontweight="bold"
+    )
+
+    # oben: Zeitreihe Gesamtlast vs. Gebäudelast
+    ax1.plot(datum, total_kw    / 1000, color="steelblue", linewidth=0.7, label=f"Netzeinspeisung ({jahres_MWh:,.0f} MWh/a)")
+    ax1.plot(datum, consumer_kw / 1000, color="#2E8B57",   linewidth=0.7, label=f"Gebäudeverbrauch ({gebaeude_MWh:,.0f} MWh/a)")
+    ax1.fill_between(datum, consumer_kw / 1000, total_kw / 1000,
+                     color="tomato", alpha=0.35, label=f"Netzverluste ({verlust_MWh:,.0f} MWh/a, {anteil_pct:.1f} %)")
+    ax1.set_ylabel("Leistung [MW]")
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+
+    # unten: Netzverluste allein
+    ax2.fill_between(datum, loss_kw / 1000, color="tomato", alpha=0.6)
+    ax2.plot(datum, loss_kw / 1000, color="tomato", linewidth=0.6)
+    ax2.axhline(loss_kw.mean() / 1000, color="black", linestyle="--",
+                linewidth=1, label=f"Ø {loss_kw.mean()/1000:.3f} MW")
+    ax2.set_ylabel("Netzverluste [MW]")
+    ax2.set_xlabel("Zeit")
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
     if show_plot:
         plt.show()
 
