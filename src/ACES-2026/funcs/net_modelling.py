@@ -2,6 +2,7 @@ import geopandas as gpd
 import networkx as nx
 import numpy as np
 import pandapipes
+import warnings
 from shapely import set_precision
 from shapely.geometry import LineString
 
@@ -42,10 +43,8 @@ def load_network_gpkg(path, layer, target_crs=TARGET_CRS, length_col="Length"):
 
     # Koordinaten auf cm-Genauigkeit runden → Endpunkte benachbarter Linien rasten ein
     gdf["geometry"] = gdf["geometry"].apply(lambda geom: set_precision(geom, COORD_PRECISION))
-
     gdf[length_col] = gdf.geometry.length  # [m]
-
-    print(gdf)
+    # print(gdf)
 
     return gdf
 
@@ -70,13 +69,18 @@ def build_graph(gdf, length_col="Length"):
     G = nx.Graph()
 
     # 1. Graph vollständig aufbauen
+    # Koordinaten auf cm runden → float64-Repräsentationsfehler nach Projektion
+    # führen sonst zu unterschiedlichen Dict-Keys für visuell identische Punkte
+    def _snap(coord):
+        return (round(coord[0], 2), round(coord[1], 2))
+
     for _, row in gdf.iterrows():
         geom = row.geometry
         if geom is None or geom.is_empty:
             continue
 
-        u = geom.coords[0]   # Startknoten (x, y)
-        v = geom.coords[-1]  # Endknoten   (x, y)
+        u = _snap(geom.coords[0])   # Startknoten (x, y)
+        v = _snap(geom.coords[-1])  # Endknoten   (x, y)
 
         attrs = row.drop("geometry").to_dict()
         attrs["geometry"] = geom
@@ -95,18 +99,18 @@ def build_graph(gdf, length_col="Length"):
         else:
             continue 
 
-        load = data.get("Connection Load")
+        load = data.get("Connection_Load (dummy)")
         if load is not None and not np.isnan(float(load)) and load > 0:
-            G.nodes[end_node]["Connection Load"] = load
+            G.nodes[end_node]["Connection_Load (dummy)"] = load
 
         # Heating Unit (Hz) auf Endknoten übertragen
-        if data.get("Heating Unit"):
-            G.nodes[end_node]["Heating Unit"] = True
+        if data.get("Heating_unit"):
+            G.nodes[end_node]["Heating_unit"] = True
 
     return G
 
 
-def test_connectivity(G, snap_tolerance=0.5):
+def test_connectivity(G, snap_tolerance=0.5, export_path=None):
     """
     Prüft, ob der Graph topologisch verbunden ist und ob es geometrische
     Lücken zwischen nahe beieinanderliegenden Knoten gibt.
@@ -116,11 +120,14 @@ def test_connectivity(G, snap_tolerance=0.5):
     G              : nx.Graph
     snap_tolerance : maximaler Abstand [m] unter dem zwei unverbundene
                      Knoten als Lücke gemeldet werden (Default: 0.5 m)
+    export_path    : Pfad zur GeoPackage-Ausgabedatei — wird nur erzeugt,
+                     wenn der Graph nicht verbunden ist (z.B. "Data/komponenten.gpkg")
     """
     print("=== Connectivity-Test ===")
 
     # 1. Topologische Verbundenheit
-    if nx.is_connected(G):
+    connected = nx.is_connected(G)
+    if connected:
         print(f"  ✓ Graph ist verbunden  "
               f"({G.number_of_nodes()} Knoten, {G.number_of_edges()} Kanten)")
     else:
@@ -128,6 +135,23 @@ def test_connectivity(G, snap_tolerance=0.5):
         print(f"  ✗ Graph ist NICHT verbunden — {len(components)} Komponenten:")
         for i, comp in enumerate(components):
             print(f"      [{i+1}] {len(comp)} Knoten")
+
+        if export_path is not None:
+            rows = []
+            for comp_idx, comp_nodes in enumerate(components, start=1):
+                subG = G.subgraph(comp_nodes)
+                for u, v, data in subG.edges(data=True):
+                    geom = data.get("geometry")
+                    if geom is not None:
+                        rows.append({"Komponente": comp_idx,
+                                     "Knoten":     len(comp_nodes),
+                                     "geometry":   geom})
+            if rows:
+                gdf_comp = gpd.GeoDataFrame(rows, geometry="geometry", crs=TARGET_CRS)
+                gdf_comp.to_file(export_path, driver="GPKG", layer="Komponenten")
+                print(f"  → GeoPackage gespeichert: {export_path}")
+            else:
+                print("  → Keine Geometrien vorhanden, GeoPackage nicht erzeugt.")
 
     # 2. Geometrische Lücken: Knoten die nah beieinander liegen, aber nicht verbunden sind
     nodes = list(G.nodes)
@@ -149,7 +173,7 @@ def test_connectivity(G, snap_tolerance=0.5):
         print(f"  ✓ Keine Lücken < {snap_tolerance} m zwischen unverbundenen Knoten")
 
     print("========================")
-    return nx.is_connected(G) and len(gaps) == 0
+    return connected and len(gaps) == 0
 
 
 def create_pandapipes_network(G, pn_bar=6.0):
@@ -188,7 +212,7 @@ def create_pandapipes_network(G, pn_bar=6.0):
         node_to_jidx_RL[coord] = jidx_RL
 
         # Hausübergabestation: Heat Exchanger + Flow Control
-        connection_load = data.get("Connection Load")
+        connection_load = data.get("Connection_Load (dummy)")
         if connection_load is not None:
             qext_w = float(connection_load) * 1000.0  # kW → W
             mdot_kg_per_s = qext_w / (cp_j_per_kgk * dt_k)
@@ -211,13 +235,13 @@ def create_pandapipes_network(G, pn_bar=6.0):
             )
 
         # Wärmeerzeuger-/Übergabestation: Umlaufpumpe von RL nach VL
-        if data.get("Heating Unit") and not data.get('Connection Load'):
+        if data.get("Heating_unit") and not data.get('Connection_Load (dummy)'):
             pandapipes.create_circ_pump_const_pressure(
                 net,
                 return_junction=jidx_RL,
                 flow_junction=jidx_VL,
                 p_flow_bar=pn_bar,
-                plift_bar=3,
+                plift_bar=4,
                 t_flow_k=t_supply_k,
             )
 
@@ -226,9 +250,9 @@ def create_pandapipes_network(G, pn_bar=6.0):
     pipe_pairs = []   # [(vl_idx, rl_idx), ...] in Kantenreihenfolge
 
     for u, v, data in G.edges(data=True):
-        length_km = data.get("Length", 0.0) / 1000.0
-        diameter_m = data.get('diameter', 0.0223)
-        u_value = data.get('u_value', 0.119)
+        length_km = data.get("Length_m", 0.0) / 1000.0
+        diameter_m = data.get('Diameter_mm', 22.3) / 1000.0  # mm → m
+        u_value = data.get('U-value_W/Km', 0.119)
         geom = data.get("geometry")
 
         alpha = u_value / (np.pi * diameter_m)
@@ -299,20 +323,38 @@ def run_timeseries(net, buildings_df, building_cols=None):
 
     for i, (_, row) in enumerate(buildings_df.iterrows()):
         for j, col in enumerate(building_cols):
-            qext_w = float(row[col]) * 1000.0          # kW → W
+            qext_w = float(row[col]) * 1000.0  # kW → W, min. 1 kW
             mdot   = qext_w / (cp * dt_k)
             net.heat_exchanger.at[hx_idx[j], 'qext_w']                          = qext_w
             net.flow_control.at[fc_idx[j],   'controlled_mdot_kg_per_s']        = mdot
 
         try:
-            pandapipes.pipeflow(net)
-            pump_mdot = float(net.res_circ_pump_pressure['mdot_from_kg_per_s'].sum())
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*pressure is negative.*", category=UserWarning)
+                pandapipes.pipeflow(net, mode="sequential")
+            if not net["converged"]:
+                total_kw = sum(max(float(row[col]), 1.0) for col in building_cols)
+                print(f"\n[t={i}] NICHT KONVERGIERT — Summenlast: {total_kw:.1f} kW")
+                print("net.pipe:\n", net.pipe.to_string())
+                print("net.res_pipe:\n", net.res_pipe.to_string())
+            pump_row   = net.res_circ_pump_pressure.iloc[0]
+            pump_mdot  = abs(float(net.res_circ_pump_pressure['mdot_from_kg_per_s'].sum()))
+            # t_from_k = Rücklauftemperatur (Ansaugseite), t_to_k = Vorlauftemperatur (Druckseite)
+            t_return_k = float(pump_row['t_from_k'])
+            t_supply_k = float(pump_row['t_to_k'])
         except Exception as e:
-            if i == 0:
-                print(f"  pipeflow Fehler (Zeitschritt 0): {e}")
-            pump_mdot = float('nan')
+            total_kw = sum(float(row[col]) for col in building_cols)
+            print(f"  [t={i} | {row['Datum']}] pipeflow Fehler (Summenlast {total_kw:.1f} kW): {e}")
+            pump_mdot  = float('nan')
+            t_return_k = float('nan')
+            t_supply_k = float('nan')
 
-        records.append({'Datum': row['Datum'], 'mdot_kg_per_s': pump_mdot})
+        records.append({
+            'Datum':       row['Datum'],
+            'mdot_kg_per_s': pump_mdot,
+            't_return_k':  t_return_k,
+            't_supply_k':  t_supply_k,
+        })
 
         if (i + 1) % 500 == 0 or (i + 1) == n:
             print(f"  {i + 1}/{n} Zeitschritte simuliert …")
@@ -328,9 +370,18 @@ def export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path, crs=TARGET_CRS):
     import pandas as pd
 
     res = net.res_pipe.copy()
+
+    # Massenströme: immer positiv (Betrag), Richtung ist durch from/to-Topologie definiert
+    res['mdot_from_kg_per_s'] = res['mdot_from_kg_per_s'].abs()
+
+    # Druckverlust: |p_from - p_to| / Länge → immer ≥ 0
     res['specific_p_loss_pa_per_m'] = (
-        (res['p_from_bar'] - res['p_to_bar']) / (net.pipe['length_km'] * 1000) * 1e5
+        (res['p_from_bar'] - res['p_to_bar']).abs() / (net.pipe['length_km'] * 1000) * 1e5
     )
+
+    # Wärmeverlust: t_from ≥ t_to im Vorlauf (Abkühlung), t_from ≤ t_to im Rücklauf
+    # → negativen Temperaturunterschied auf 0 setzen (kein "Wärmegewinn" aus dem Boden)
+    res['t_loss_k'] = (res['t_from_k'] - res['t_to_k']).clip(lower=0)
 
     rows = []
     for vl_idx, rl_idx in pipe_pairs:
