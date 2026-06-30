@@ -81,6 +81,7 @@ pipe_parameters:
   kr: 0.04                        # mm
   specific_pressure_loss: 150     # Pa/m
   specific_invest_pipe: 250       # Euro/m
+  lenght_pipe: 4721               # m
   pipe_models:
     - DN: 20
       u_value: null               # TODO ausfüllen
