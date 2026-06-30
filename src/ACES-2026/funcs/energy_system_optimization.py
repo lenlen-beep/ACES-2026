@@ -80,6 +80,7 @@ max_discharge_rate = parameters["system_parameters"]["storage"]["max_discharge_r
 Q_loss = parameters["system_parameters"]["storage"]["Q_loss"]
 SOC_init = parameters["system_parameters"]["storage"]["SOC_init"]
 storage_cap = parameters["system_parameters"]["storage"]["initial_storage_capacity"]
+Q_loss_seasonal = parameters["system_parameters"]["seasonal_storage"]["Q_loss_seasonal"]
 
 # Gaskesselparameter
 eta_gas_boiler = parameters["system_parameters"]["gas_boiler"]["eta_gas_boiler"]
@@ -245,15 +246,15 @@ def optimize_energy_system(
         #Restliche Zeitschritte: SOC immer gleich dem SOC aus vorherigen Zeitschritt 
         # + charge oder - discharge - Verluste
         storage_MWh = storage_volume_to_MWh(m.storage_capacity)
-        Q_loss_MWh = Q_loss
+        Q_loss_MWh = Q_loss * storage_MWh  # relativer Verlust: 0,2 %/h der Kapazität
 
         if t == 0:
-            return m.SOC[t] == SOC_init * storage_MWh #x% initialer Ladezustand (Anfang)
+            return m.SOC[t] == SOC_init * storage_MWh
 
         elif t == T[-1]:
-            return m.SOC[t] == SOC_init * storage_MWh #x% initialer Ladezustand (Ende)
-        
-        return m.SOC[t] == m.SOC[t-1] + m.charge[t] - m.discharge[t] -Q_loss_MWh
+            return m.SOC[t] == SOC_init * storage_MWh
+
+        return m.SOC[t] == m.SOC[t-1] + m.charge[t] - m.discharge[t] - Q_loss_MWh
 
     model.storage = pyo.Constraint(model.T, rule=storage_rule)
 
@@ -304,7 +305,6 @@ def optimize_energy_system(
         
     model.negative_price_discharge_restrict = pyo.Constraint(model.T, rule=negative_price_discharge_restrict)
 
-
     #PV-Verfügbarkeit
     def pv_availability_rule(m, t):
         return m.pv_availability[t] == pv[t] * m.pv_capacity
@@ -328,7 +328,8 @@ def optimize_energy_system(
             return m.SOC_seasonal[t] == initial_soc + m.seasonal_charge[t] - m.seasonal_discharge[t]
         return m.SOC_seasonal[t] == (m.SOC_seasonal[t-1]
                                     + m.seasonal_charge[t]
-                                    - m.seasonal_discharge[t])
+                                    - m.seasonal_discharge[t]
+                                    - Q_loss_seasonal * m.SOC_seasonal[t-1])
     model.seasonal_storage = pyo.Constraint(model.T, rule=seasonal_storage_rule)
 
     def seasonal_soc_limit(m, t):
