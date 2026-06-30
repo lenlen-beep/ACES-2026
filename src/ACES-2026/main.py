@@ -1,25 +1,20 @@
 from funcs.plots import plot_temperatures, plot_prices, plot_gas_prices, \
                         plot_charge_discharge_process, plot_energy_system_output_sorted, \
-                        plot_load_w_components, plot_SOC, plot_pv, plot_seasonal_storage
+                        plot_load_w_components, plot_SOC, plot_pv, plot_seasonal_storage, \
+                        plot_network_losses
 from funcs.read_data import read_price_data, read_gas_price_data, read_pv_data, load_temperature_data
 from funcs.energy_system_optimization import optimize_energy_system
 from funcs.net_modelling import load_network_gpkg, build_graph, test_connectivity, create_pandapipes_network, \
                                 export_res_pipe_gpkg, run_timeseries
-from funcs.data_analysis.test_buildings import load_example_buildings
 
 import pandapipes
 import pandas as pd
+import warnings
+import numpy as np
+
 
 from funcs.read_data import read_parameters
 parameters = read_parameters("src/ACES-2026/parameters.yaml")
-
-import numpy as np
-
-# TODO: load_example_buildings muss durch den richtigen ersetzt werden
-
-# TODO load muss noch korrekt in MW umgerechnet werden (Aktuell in W)
-
-# TODO: Gaspreise jetzt tariflich -> Einlesen der Gaspreise kann weg
 
 
 # -------------------------------------------------
@@ -28,59 +23,87 @@ import numpy as np
 
 # Trassierung importieren
 gdf = load_network_gpkg(
-    path="src/ACES-2026/Data/Trassierung.gpkg",
-    layer="Trassierung",
+    path="src/ACES-2026/Data/Trassierung_Jerrishoe.gpkg",
+    layer="Trassierung_Jerrishoe",
 )
 
 # Netz bauen
 graph = build_graph(gdf)
-test_connectivity(graph)
+test_connectivity(graph, export_path="src/ACES-2026/Data/graph_komponenten.gpkg")
 
-net, pipe_geoms, pipe_pairs= create_pandapipes_network(graph)
+net, pipe_geoms, pipe_pairs = create_pandapipes_network(graph)
 
 # Testrechnung
-pandapipes.pipeflow(net)
-print(net.res_circ_pump_pressure)
-export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe.gpkg")
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message=".*pressure is negative.*", category=UserWarning)
+    pandapipes.pipeflow(net, mode="sequential")
+export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe_example.gpkg")
 
-# Gebäudedaten laden
-buildings_df = load_example_buildings()  
+# Gebäudedaten laden und auf Trasse filtern
+buildings_df = pd.read_csv(r"src/ACES-2026/Data/selected_267_profiles_2019_wide.csv")
 
-# Zeitreihensimulation
+# IDs aus GeoPackage (ID > 0 = echte Hausanschlüsse)
+trasse_ids = set(gdf.loc[gdf["ID"] > 0, "ID"].astype(str))
+verfuegbar  = set(buildings_df.columns) - {"Datum"}
+in_trasse   = sorted(trasse_ids & verfuegbar, key=lambda x: int(x))
+nicht_in_df = trasse_ids - verfuegbar
+buildings_df = buildings_df[["Datum"] + in_trasse]
+print(f"Gebäude nach Trassierung: {len(in_trasse)} behalten "
+      f"({len(verfuegbar) - len(in_trasse)} entfernt, "
+      f"{len(nicht_in_df)} in Trasse aber nicht in CSV)")
+# print(f'Gebäude-Dataframe: {buildings_df}')
+
+# Zeitreihensimulation Netz
 result_df = run_timeseries(net, buildings_df)
-
-print(result_df)
+result_df.to_csv("src/ACES-2026/Data/result_timeseries.csv", index=False)
+# print(f'Ergebnis-Dataframe (Netzsimulation): {result_df}')
 
 # Spitzenlast filtern
 peak_idx  = result_df['mdot_kg_per_s'].idxmax()
 peak_mass_flow = result_df.loc[peak_idx, 'mdot_kg_per_s']
 peak_date = result_df.loc[peak_idx, 'Datum']
-peak_load = peak_mass_flow * parameters['net_parameters']['cp'] * parameters['net_parameters']['delta_T'] 
-print(f"Spitzenlast: {peak_load:.1f} mit Spitzenmassenstrom: {peak_mass_flow:.4f} kg/s  am  {peak_date}")
+peak_load_kW = peak_mass_flow * parameters['net_parameters']['cp'] * parameters['net_parameters']['delta_T'] / 1000
+print(f"Spitzenlast: {peak_load_kW:.1f} kW  |  Massenstrom: {peak_mass_flow:.4f} kg/s  am  {peak_date}")
 
-# Dauerlinie berechnen
-result_df['load_kW'] = result_df['mdot_kg_per_s'] * parameters['net_parameters']['cp'] * parameters['net_parameters']['delta_T'] 
+# Gesamtwärme der Pumpe: mdot × cp × tatsächliches ΔT (VL − RL an der Pumpe)
+# Nicht Design-ΔT verwenden — sonst sind Rohrverluste unsichtbar!
+cp = parameters['net_parameters']['cp']
+result_df['delta_T_ist'] = result_df['t_supply_k'] - result_df['t_return_k']
+result_df['load_kW'] = result_df['mdot_kg_per_s'] * cp * result_df['delta_T_ist'] / 1000
+# print(result_df)
 
-print(result_df)
+# Netzverluste berechnen
+building_cols = [c for c in buildings_df.columns if c != 'Datum']
+result_df['consumer_load_kW'] = buildings_df[building_cols].sum(axis=1).values
+result_df['net_loss_kW'] = result_df['load_kW'] - result_df['consumer_load_kW']
+
+jahresverbrauch_MWh    = result_df['load_kW'].sum() / 1000
+gebaeude_MWh           = result_df['consumer_load_kW'].sum() / 1000
+netzverlust_MWh        = result_df['net_loss_kW'].sum() / 1000
+netzverlust_anteil_pct = netzverlust_MWh / jahresverbrauch_MWh * 100
+
+print(f"\n--- Netzverluste ---")
+print(f"Jahresgesamtverbrauch (Netz):  {jahresverbrauch_MWh:,.1f} MWh/a")
+print(f"Gebäudeverbrauch (Summe):      {gebaeude_MWh:,.1f} MWh/a")
+print(f"Netzverluste:                  {netzverlust_MWh:,.1f} MWh/a  ({netzverlust_anteil_pct:.1f} %)")
 
 # Für die Rohrdimensionierung: Spitzenlastreihe simulieren
 peak_row = buildings_df.iloc[[peak_idx]]  # doppelte Klammer → DataFrame statt Series
-print(peak_row)
-
+# print(f'Spitzenlast: {peak_row}')
 peak_result_df = run_timeseries(net, peak_row)
-
 export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe_peak.gpkg")
 
+# Dauerlinie in MW (Optimierung erwartet MW)
+load = result_df.set_index('Datum')['load_kW'] / 1000
 
-# Dauerline
-load = result_df.set_index('Datum')['load_kW']
-
-# Angabe über mögliche Abwärmequellen (z.B. Industrie, Rechenzentren)
+"""
+# Angabe über mögliche Abwärmequellen (z.B. Industrie, Rechenzentren) OPTIONAL FÜR BERICHT
 max_waste_heat_capacity = 0 # MW
 waste_heat_cost = 0 # Euro/MWh
 
 # Kann PV und Saisonalspeicher gebaut werden?
 usable_area = 0 # m2
+"""
 
 
 # --------------------------------------------------
@@ -89,9 +112,9 @@ usable_area = 0 # m2
 
 temperature = load_temperature_data(year=2019, lat=54.78, lon=9.43)
 
-
 # Referenzindex für 2024-Daten (Preise, PV): Schaltjahr = 8784 h
 ref_2024 = pd.Series(0.0, index=pd.date_range("2024-01-01", periods=8784, freq="1h"))
+
 
 # --------------------------------------------------
 # Laden und aufbereiten der Strompreise
@@ -105,7 +128,7 @@ electricity_price = read_price_data(
 
 
 # --------------------------------------------------
-# Laden der Gaspreise                                      #!
+# Laden der Gaspreise
 # --------------------------------------------------
 
 gas_price = read_gas_price_data(
@@ -124,6 +147,7 @@ pv = read_pv_data(
     filename="ninja_pv_54.7833_9.4333_corrected.csv",
     load_data=ref_2024
 )
+
 
 # --------------------------------------------------
 # Schalttag entfernen + Wochenprofil synchronisieren
@@ -156,7 +180,7 @@ results, result_df_heatpump, result_df_gas_boiler, result_df_charge, result_df_d
         load, electricity_price, gas_price, pv,
         elec_price_mode="spot",       # "spot" | "tariff" | "hedge"
         elec_hedge_share=0.0,         # Anteil Festpreis bei mode="hedge" (0–1)
-        gas_price_mode="spot",        # "spot" | "tariff"
+        gas_price_mode="tariff",        # "spot" | "tariff"
     )
 
 
@@ -164,9 +188,10 @@ results, result_df_heatpump, result_df_gas_boiler, result_df_charge, result_df_d
 # Plotting
 # --------------------------------------------------
 
+plot_network_losses(result_df, show_plot=True)
 plot_prices(electricity_price, show_plot=True)
-plot_gas_prices(gas_price, show_plot=True)
-plot_temperatures(temperature, station_id="Flensburg", show_plot=True)
+plot_gas_prices(gas_price, show_plot=False)
+plot_temperatures(temperature, station_id="Flensburg", show_plot=False)
 
 plot_energy_system_output_sorted(load, 
                                  result_df_heatpump, 
@@ -182,7 +207,17 @@ plot_load_w_components(result_df_heatpump,
                        result_seasonal_discharge, 
                        show_plot=True)
 
-plot_charge_discharge_process(result_df_charge, result_df_discharge, result_df_SOC, result_storage_capacity, show_plot=True)
+plot_charge_discharge_process(result_df_charge, 
+                              result_df_discharge, 
+                              result_df_SOC, 
+                              result_storage_capacity, 
+                              show_plot=True)
+
 plot_SOC(result_df_SOC, result_storage_capacity, show_plot=True)
 plot_pv(result_pv, result_pv_feed_in, result_pv_capacity, show_plot=True)
-plot_seasonal_storage(result_seasonal_charge, result_seasonal_discharge, result_seasonal_soc, result_seasonal_capacity, show_plot=True)
+
+plot_seasonal_storage(result_seasonal_charge, 
+                      result_seasonal_discharge, 
+                      result_seasonal_soc, 
+                      result_seasonal_capacity, 
+                      show_plot=True)
