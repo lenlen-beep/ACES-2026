@@ -2,7 +2,7 @@ net_parameters:
   supply_temperature: 80          # °C
   delta_T: 25                     # K
   specific_heat_capacity: 4.187   # kJ/kgK
-  density: 980                   # kg/m3
+  density: 1000                   # kg/m3
   cp: 4187                        # J/kgK
 
 system_parameters:
@@ -11,35 +11,34 @@ system_parameters:
     initial_storage_capacity: 500 # m3
     max_charge_rate: 0.25         # Anteil der Kapazität pro Stunde (Quelle?)
     max_discharge_rate: 0.25      # Anteil der Kapazität pro Stunde (Quelle?)
-    Q_loss: 0.002                 # relativer Verlust [1/h] = 0,2 % der Kapazität pro Stunde
-    SOC_init: 0.5                 # Anfangs-/End-Ladezustand (50 %)
+    Q_loss: 0.167                 # MWh Wärmeverlust  # TODO prüfen
+    SOC_init: 0.0                 # Anfangs-/End-Ladezustand  # TODO
     invest_offset_storage: 78021  # Euro (Danish storage catalogue), 0-1000 m3
     specific_invest_storage: 222.71  # Euro/m3, linear 100-1000 m3 (Danish storage catalogue)
 
   pump:
     gravity: 9.81                 # m/s2
-    del_height: 5                 # m (Näherung), alt 5
+    del_height: 5                 # m (Näherung)
     eta_pump: 0.9                 # Wirkungsgrad
 
   HP:                             # Wärmepumpe
-    COP: 3.2 # claude: 2,8 - 3,2, alt 3,5
-    initial_hp_capacity: 3       # MW
+    COP: 3.5
+    initial_hp_capacity: 30       # MW
     invest_offset_hp: 0           # Euro
-    specific_invest_hp: 1200000    # Euro/MW claude: 800000, alt 1200000
+    specific_invest_hp: 1200000    # Euro/MW
 
   gas_boiler:
     eta_gas_boiler: 0.98
-    initial_gas_thermal_power: 1 # MW
+    initial_gas_thermal_power: 30 # MW
     specific_invest_gas_boiler: 60000  # Euro/MW
     invest_offset_boiler: 0       # Euro
 
   seasonal_storage:               # PTES / Grubenspeicher
     invest_offset_seasonal_storage: 892300   # Euro
-    specific_invest_seasonal_storage: 50     # Euro/m3 #claude: 80, alt 20
+    specific_invest_seasonal_storage: 20     # Euro/m3
     initial_seasonal_storage_capacity: 10000 # m3
-    max_seasonal_charge_rate: 0.003           # Anteil/Stunde (~14 Tage Vollladung)
-    max_seasonal_discharge_rate: 0.003        # Anteil/Stunde
-    Q_loss_seasonal: 0.00003                  # relativer Verlust [1/h] ≈ 15 % Verlust pro Saison (6 Monate)
+    max_seasonal_charge_rate: 0.03           # Anteil/Stunde (Quelle?)
+    max_seasonal_discharge_rate: 0.03        # Anteil/Stunde (Quelle?)
 
   PV:
     invest_offset_pv: 0           # Euro
@@ -82,3 +81,40 @@ pipe_parameters:
   kr: 0.04                        # mm
   specific_pressure_loss: 150     # Pa/m
   specific_invest_pipe: 250       # Euro/m
+  pipe_models:
+    - DN: 20
+      u_value: null               # TODO ausfüllen
+      diameter: null
+    - DN: 25
+      u_value: null
+      diameter: null
+    - DN: 40
+      u_value: null
+      diameter: null
+    - DN: 50
+      u_value: null
+      diameter: null
+    - DN: 65
+      u_value: null
+      diameter: null
+    - DN: 80
+      u_value: null
+      diameter: null
+    - DN: 100
+      u_value: null
+      diameter: null
+    - DN: 125
+      u_value: null
+      diameter: null
+    - DN: 150
+      u_value: null
+      diameter: null
+    - DN: 200
+      u_value: null
+      diameter: null
+    - DN: 250
+      u_value: null
+      diameter: null
+    - DN: 300
+      u_value: null
+      diameter: null
