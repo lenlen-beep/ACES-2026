@@ -50,12 +50,17 @@ import pandas as pd
 # GUI-Backend wird vor dem pyplot-Import gesetzt; das erste verfügbare Backend
 # wird verwendet (identisch zu Step 2).
 import matplotlib
-for _backend in ("Qt5Agg", "QtAgg", "TkAgg", "MacOSX"):
+for _backend in ("MacOSX", "TkAgg", "Qt5Agg", "QtAgg"):
     try:
         matplotlib.use(_backend, force=True)
+        import matplotlib.pyplot as _plt_probe
+        _fig = _plt_probe.figure()
+        _plt_probe.close(_fig)
         break
     except Exception:
         continue
+else:
+    matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
