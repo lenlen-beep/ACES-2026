@@ -1,7 +1,8 @@
 from funcs.plots import plot_temperatures, plot_prices, plot_gas_prices, \
                         plot_charge_discharge_process, plot_energy_system_output_sorted, \
                         plot_load_w_components, plot_SOC, plot_pv, plot_seasonal_storage, \
-                        plot_network_losses
+                        plot_network_losses, plot_energy_system_daily_stacked, \
+                        plot_buffer_daily, plot_seasonal_daily, plot_pv_daily
 from funcs.read_data import read_price_data, read_gas_price_data, read_pv_data, load_temperature_data
 from funcs.energy_system_optimization import optimize_energy_system
 from funcs.net_modelling import load_network_gpkg, build_graph, test_connectivity, create_pandapipes_network, \
@@ -185,6 +186,49 @@ results, result_df_heatpump, result_df_gas_boiler, result_df_charge, result_df_d
 
 
 # --------------------------------------------------
+# Energiebilanz nach Komponente
+# --------------------------------------------------
+
+total_demand_MWh = load.sum()
+
+wp_MWh        = result_df_heatpump.sum()
+gas_MWh       = result_df_gas_boiler.sum()
+buf_dis_MWh   = result_df_discharge.sum()
+sea_dis_MWh   = result_seasonal_discharge.sum()
+buf_ch_MWh    = result_df_charge.sum()
+sea_ch_MWh    = result_seasonal_charge.sum()
+pv_self_MWh   = (result_pv - result_pv_feed_in).sum()
+
+from funcs.energy_system_optimization import storage_volume_to_MWh
+buf_cap_MWh = storage_volume_to_MWh(result_storage_capacity)
+sea_cap_MWh = storage_volume_to_MWh(result_seasonal_capacity)
+
+print(f"\n{'='*58}")
+print(f"  Jahreswärmebedarf (Netz):       {total_demand_MWh:>8.1f} MWh/a  (100 %)")
+print(f"{'='*58}")
+print(f"  Wärmepumpe:                     {wp_MWh:>8.1f} MWh/a  ({wp_MWh/total_demand_MWh*100:>5.1f} %)")
+print(f"  Gaskessel:                      {gas_MWh:>8.1f} MWh/a  ({gas_MWh/total_demand_MWh*100:>5.1f} %)")
+print(f"  Pufferspeicher Entladung:       {buf_dis_MWh:>8.1f} MWh/a  ({buf_dis_MWh/total_demand_MWh*100:>5.1f} %)")
+print(f"  Saisonalspeicher Entladung:     {sea_dis_MWh:>8.1f} MWh/a  ({sea_dis_MWh/total_demand_MWh*100:>5.1f} %)")
+print(f"{'='*58}")
+print(f"  PV-Eigenverbrauch (→ WP):       {pv_self_MWh:>8.1f} MWh/a")
+print(f"  Pufferspeicher Ladung:          {buf_ch_MWh:>8.1f} MWh/a")
+print(f"  Saisonalspeicher Ladung:        {sea_ch_MWh:>8.1f} MWh/a")
+print(f"{'='*58}")
+print(f"  Wärmepumpe Kapazität:           {result_df_heatpump.max():>8.3f} MW")
+print(f"  Gaskessel Kapazität:            {result_gas_boiler_capacity:>8.3f} MW")
+print(f"  PV Kapazität:                   {result_pv_capacity:>8.3f} MW")
+print(f"  Pufferspeicher Kapazität:       {buf_cap_MWh:>8.3f} MWh  ({result_storage_capacity:.3f} m³)")
+print(f"  Saisonalspeicher Kapazität:     {sea_cap_MWh:>8.3f} MWh  ({result_seasonal_capacity:.3f} m³)")
+print(f"{'='*58}")
+buf_cycles = buf_ch_MWh / buf_cap_MWh if buf_cap_MWh > 0 else 0
+sea_cycles = sea_ch_MWh / sea_cap_MWh if sea_cap_MWh > 0 else 0
+print(f"  Pufferspeicher Zyklen/a:        {buf_cycles:>8.1f}  (Ladung / Kapazität)")
+print(f"  Saisonalspeicher Zyklen/a:      {sea_cycles:>8.1f}  (Ladung / Kapazität)")
+print(f"{'='*58}\n")
+
+
+# --------------------------------------------------
 # Plotting
 # --------------------------------------------------
 
@@ -216,8 +260,23 @@ plot_charge_discharge_process(result_df_charge,
 plot_SOC(result_df_SOC, result_storage_capacity, show_plot=True)
 plot_pv(result_pv, result_pv_feed_in, result_pv_capacity, show_plot=True)
 
-plot_seasonal_storage(result_seasonal_charge, 
-                      result_seasonal_discharge, 
-                      result_seasonal_soc, 
-                      result_seasonal_capacity, 
+plot_seasonal_storage(result_seasonal_charge,
+                      result_seasonal_discharge,
+                      result_seasonal_soc,
+                      result_seasonal_capacity,
                       show_plot=True)
+
+plot_energy_system_daily_stacked(load,
+                                 result_df_heatpump,
+                                 result_df_gas_boiler,
+                                 result_df_discharge,
+                                 result_df_charge,
+                                 result_seasonal_discharge,
+                                 result_seasonal_charge,
+                                 show_plot=True)
+
+plot_buffer_daily(result_df_charge, result_df_discharge, show_plot=True)
+
+plot_seasonal_daily(result_seasonal_charge, result_seasonal_discharge, show_plot=True)
+
+plot_pv_daily(result_pv, result_pv_feed_in, result_pv_capacity, show_plot=True)
