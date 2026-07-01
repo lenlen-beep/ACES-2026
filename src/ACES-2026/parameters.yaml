@@ -35,7 +35,7 @@ system_parameters:
 
   seasonal_storage:               # PTES / Grubenspeicher
     invest_offset_seasonal_storage: 892300   # Euro
-    specific_invest_seasonal_storage: 20     # Euro/m3 #claude: 80, alt 20
+    specific_invest_seasonal_storage: 50     # Euro/m3 #claude: 80, alt 20
     initial_seasonal_storage_capacity: 10000 # m3
     max_seasonal_charge_rate: 0.003           # Anteil/Stunde (~14 Tage Vollladung)
     max_seasonal_discharge_rate: 0.003        # Anteil/Stunde
