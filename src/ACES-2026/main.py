@@ -174,7 +174,7 @@ gas_price         = np.concatenate([gas_price[24:],         gas_price[:24]])
 # --------------------------------------------------
 
 results, result_df_heatpump, result_df_gas_boiler, result_df_charge, result_df_discharge, \
-    result_df_SOC, result_storage_capacity, result_gas_boiler_capacity, result_pv, \
+    result_df_SOC, result_storage_capacity, result_gas_boiler_capacity, result_hp_capacity, result_pv, \
     result_pv_feed_in, result_pv_capacity, result_seasonal_charge, result_seasonal_discharge, \
     result_seasonal_soc, result_seasonal_capacity \
     = optimize_energy_system(
@@ -215,7 +215,7 @@ print(f"  PV-Eigenverbrauch (→ WP):       {pv_self_MWh:>8.1f} MWh/a")
 print(f"  Pufferspeicher Ladung:          {buf_ch_MWh:>8.1f} MWh/a")
 print(f"  Saisonalspeicher Ladung:        {sea_ch_MWh:>8.1f} MWh/a")
 print(f"{'='*58}")
-print(f"  Wärmepumpe Kapazität:           {result_df_heatpump.max():>8.3f} MW")
+print(f"  Wärmepumpe Kapazität:           {result_hp_capacity:>8.3f} MW")
 print(f"  Gaskessel Kapazität:            {result_gas_boiler_capacity:>8.3f} MW")
 print(f"  PV Kapazität:                   {result_pv_capacity:>8.3f} MW")
 print(f"  Pufferspeicher Kapazität:       {buf_cap_MWh:>8.3f} MWh  ({result_storage_capacity:.3f} m³)")
@@ -280,3 +280,26 @@ plot_buffer_daily(result_df_charge, result_df_discharge, show_plot=True)
 plot_seasonal_daily(result_seasonal_charge, result_seasonal_discharge, show_plot=True)
 
 plot_pv_daily(result_pv, result_pv_feed_in, result_pv_capacity, show_plot=True)
+
+# --------------------------------------------------
+# LCOH berechnen und plotten
+# --------------------------------------------------
+import sys, os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from LCOH import calculate_lcoh, plot_lcoh_pie
+
+network_length = gdf["Length_m"].sum()   # [m]
+
+lcoh, components = calculate_lcoh(
+    demand=load, electricity_price=electricity_price, gas_price=gas_price,
+    Q_hp=result_df_heatpump, charge=result_df_charge, discharge=result_df_discharge,
+    Q_gas_boiler=result_df_gas_boiler, pv_availability=result_pv, pv_feed_in=result_pv_feed_in,
+    storage_capacity_m3=result_storage_capacity, gas_boiler_capacity=result_gas_boiler_capacity,
+    pv_capacity=result_pv_capacity, seasonal_capacity_m3=result_seasonal_capacity,
+    network_length=network_length,
+    hp_capacity=result_hp_capacity,   # direkt aus Optimierer, kein Rekonstruieren
+    elec_price_mode="spot",           # gleicher Modus wie in der Optimierung
+    gas_price_mode="tariff",          # gleicher Modus wie in der Optimierung
+)
+
+plot_lcoh_pie(components, lcoh, show_plot=True)

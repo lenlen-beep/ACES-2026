@@ -157,12 +157,31 @@ def calculate_lcoh(
         P_grid = np.clip(P_grid, 0.0, None)  # Rundungsreste abfangen
 
     # --- CAPEX (annualisiert, €/a) -------------------------------------------
-    capex_hp       = (hp_invest_offset       + hp_specific_cost       * hp_capacity)         * annuity_factor
-    capex_storage  = (storage_invest_offset  + storage_specific_cost  * storage_capacity_m3) * annuity_factor
-    capex_gas      = (gas_invest_offset      + gas_specific_cost      * gas_boiler_capacity) * annuity_factor
-    capex_pv       = (pv_invest_offset       + pv_specific_cost       * pv_capacity)         * annuity_factor
-    capex_seasonal = (seasonal_invest_offset + seasonal_specific_cost * seasonal_capacity_m3) * annuity_factor
-    capex_grid     = (pipe_specific_cost     * network_length)                                * annuity_factor
+    # Fixkosten (invest_offset) nur wenn Kapazität > 0 – bei Kapazität 0 wird
+    # die Komponente nicht gebaut, also entstehen auch keine Investitionskosten.
+    def _capex(offset, spec_cost, cap):
+        return (offset + spec_cost * cap) * annuity_factor if cap > 0 else 0.0
+
+    def _invest(offset, spec_cost, cap):
+        return (offset + spec_cost * cap) if cap > 0 else 0.0
+
+    capex_hp       = _capex(hp_invest_offset,       hp_specific_cost,       hp_capacity)
+    capex_storage  = _capex(storage_invest_offset,  storage_specific_cost,  storage_capacity_m3)
+    capex_gas      = _capex(gas_invest_offset,       gas_specific_cost,      gas_boiler_capacity)
+    capex_pv       = _capex(pv_invest_offset,        pv_specific_cost,       pv_capacity)
+    capex_seasonal = _capex(seasonal_invest_offset,  seasonal_specific_cost, seasonal_capacity_m3)
+    capex_grid     = (pipe_specific_cost * network_length) * annuity_factor
+
+    # O&M: 1,5 % der Gesamtinvestition p.a.
+    total_invest = (
+        _invest(hp_invest_offset,       hp_specific_cost,       hp_capacity)
+        + _invest(storage_invest_offset,  storage_specific_cost,  storage_capacity_m3)
+        + _invest(gas_invest_offset,       gas_specific_cost,      gas_boiler_capacity)
+        + _invest(pv_invest_offset,        pv_specific_cost,       pv_capacity)
+        + _invest(seasonal_invest_offset,  seasonal_specific_cost, seasonal_capacity_m3)
+        + pipe_specific_cost * network_length
+    )
+    opex_om = 0.015 * total_invest
 
     # --- OPEX (€/a) -----------------------------------------------------------
     opex_elec  = float(np.sum(electricity_price * P_grid))
@@ -174,7 +193,7 @@ def calculate_lcoh(
 
     # --- Gesamtkosten und LCOH -----------------------------------------------
     total_cost = (capex_hp + capex_storage + capex_gas + capex_pv + capex_seasonal
-                  + capex_grid + opex_elec + opex_pump + opex_gas - revenue_pv)
+                  + capex_grid + opex_elec + opex_pump + opex_gas + opex_om - revenue_pv)
 
     heat_delivered = float(np.sum(demand))  # MWh/a
     lcoh_total = total_cost / heat_delivered
@@ -190,6 +209,7 @@ def calculate_lcoh(
         "Strombezug WP (OPEX)":     opex_elec,
         "Pumpstrom (OPEX)":         opex_pump,
         "Gas-Brennstoff (OPEX)":    opex_gas,
+        "O&M (1,5 % CAPEX)":        opex_om,
         "PV-Einspeiseerlös":        -revenue_pv,   # negativ (Gutschrift)
     }
 
@@ -215,18 +235,50 @@ def calculate_lcoh(
     return lcoh_total, components
 
 
+_COLOR_WP       = "#00395B"
+_COLOR_GAS      = "#C17A2F"
+_COLOR_SPEICHER = "#769D7B"
+_COLOR_SAISONAL = "#2F6B4F"
+_COLOR_PV       = "#C8A84B"
+_COLOR_NETZ     = "#A0463A"
+_COLOR_PUMP     = "#888888"
+_COLOR_OM       = "#AAAAAA"
+
+_PIE_COLORS = {
+    "Heat pump":              _COLOR_WP,
+    "Buffer storage":         _COLOR_SPEICHER,
+    "Gas boiler":             _COLOR_GAS,
+    "PV (net)":               _COLOR_PV,
+    "Seasonal storage":       _COLOR_SAISONAL,
+    "District heating network": _COLOR_NETZ,
+    "Pump electricity":       _COLOR_PUMP,
+    "O&M (1.5 % CAPEX)":     _COLOR_OM,
+}
+
+_LABEL_EN = {
+    "Wärmepumpe":       "Heat pump",
+    "Pufferspeicher":   "Buffer storage",
+    "Gaskessel":        "Gas boiler",
+    "PV (netto)":       "PV (net)",
+    "Saisonalspeicher": "Seasonal storage",
+    "Wärmenetz":        "District heating network",
+    "Pumpstrom":        "Pump electricity",
+    "O&M":              "O&M (1.5 % CAPEX)",
+}
+
+_PLOTS_DIR = "src/ACES-2026/plots"
+
+
 def plot_lcoh_pie(components, lcoh_total=None, show_plot=True):
     """
-    Kreisdiagramm der LCOH-Zusammensetzung mit Prozentanteilen.
+    Donut-Diagramm der LCOH-Zusammensetzung mit Projektfarben im PPT-Format.
 
-    PV-CAPEX und PV-Erlös werden zu 'PV (netto)' zusammengefasst, damit der Tortenkreis
-    nur positive Anteile enthält (matplotlib kann keine negativen Segmente darstellen).
-    Der PV-Eigenverbrauchsvorteil steckt bereits implizit im reduzierten Strombezug.
+    PV-CAPEX und PV-Erlös werden zu 'PV (netto)' zusammengefasst, damit der Donut
+    nur positive Anteile enthält (negative Segmente sind in matplotlib nicht möglich).
     """
-    # PV netto = PV-CAPEX + PV-Erlös(negativ)
     pv_capex   = components.get("PV (CAPEX)", {}).get("eur_per_year", 0.0)
     pv_revenue = components.get("PV-Einspeiseerlös", {}).get("eur_per_year", 0.0)  # negativ
-    pv_net = pv_capex + pv_revenue
+    pv_net     = pv_capex + pv_revenue
 
     pie_items = {
         "Wärmepumpe":       components["Wärmepumpe (CAPEX)"]["eur_per_year"]
@@ -238,43 +290,64 @@ def plot_lcoh_pie(components, lcoh_total=None, show_plot=True):
         "Saisonalspeicher": components["Saisonalspeicher (CAPEX)"]["eur_per_year"],
         "Wärmenetz":        components["Wärmenetz (CAPEX)"]["eur_per_year"],
         "Pumpstrom":        components["Pumpstrom (OPEX)"]["eur_per_year"],
+        "O&M":              components["O&M (1,5 % CAPEX)"]["eur_per_year"],
     }
 
-    # Nur positive Anteile darstellen (negative würden den Tortenkreis verfälschen)
-    labels, values = [], []
+    total_positive = sum(v for v in pie_items.values() if v > 0)
+    labels_en, values, colors = [], [], []
     for label, val in pie_items.items():
+        en = _LABEL_EN.get(label, label)
         if val > 0:
-            labels.append(label)
+            if val / total_positive * 100 < 0.1:
+                print(f"Note: '{en}' is below 0.1 % ({val:,.0f} €/a) → not shown.")
+                continue
+            labels_en.append(en)
             values.append(val)
+            colors.append(_PIE_COLORS.get(en, "#CCCCCC"))
         elif val != 0:
-            print(f"Hinweis: '{label}' ist negativ ({val:,.0f} €/a) und wird im "
-                  f"Kreisdiagramm nicht dargestellt (Netto-Gutschrift).")
+            print(f"Note: '{en}' is negative ({val:,.0f} €/a) → net credit, not shown.")
 
-    colors = plt.cm.tab20.colors[:len(labels)]
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = ['Calibri', 'Helvetica Neue', 'Helvetica', 'Arial', 'DejaVu Sans']
 
-    fig, ax = plt.subplots(figsize=(9, 7))
+    fig, ax = plt.subplots(figsize=(16, 9), facecolor="white")
+
     wedges, _, autotexts = ax.pie(
         values,
-        labels=labels,
-        autopct=lambda p: f"{p:.1f}%",
+        labels=None,           # Labels über Legende, nicht direkt am Segment
+        autopct=lambda p: f"{p:.1f} %",
         startangle=90,
         counterclock=False,
         colors=colors,
-        pctdistance=0.78,
-        wedgeprops=dict(width=0.45, edgecolor="white"),  # Donut für bessere Lesbarkeit
+        pctdistance=1.18,      # außerhalb des Donuts
+        wedgeprops=dict(width=0.48, edgecolor="white", linewidth=2),
     )
     for t in autotexts:
-        t.set_fontsize(9)
+        t.set_fontsize(12)
         t.set_fontweight("bold")
+        t.set_color("#1A1A1A")
 
-    title = "Zusammensetzung des LCOH"
     if lcoh_total is not None:
-        title += f"\nLCOH = {lcoh_total:.2f} €/MWh ({lcoh_total/10:.2f} ct/kWh)"
-    ax.set_title(title, fontsize=13)
+        ax.text(0, 0, f"LCOH\n{lcoh_total:.1f} €/MWh",
+                ha="center", va="center",
+                fontsize=15, fontweight="bold", color="#1A1A1A")
+
+    # Legende rechts
+    from matplotlib.patches import Patch
+    legend_handles = [Patch(facecolor=c, label=l) for l, c in zip(labels_en, colors)]
+    ax.legend(handles=legend_handles, fontsize=13, frameon=False,
+              loc="center left", bbox_to_anchor=(0.82, 0.5))
+
+    ax.set_title("Levelized Cost of Heat (LCOH) – Component breakdown",
+                 fontsize=16, fontweight="bold", color="#1A1A1A", pad=20)
     ax.axis("equal")
-    plt.tight_layout()
+
+    os.makedirs(_PLOTS_DIR, exist_ok=True)
+    out = os.path.join(_PLOTS_DIR, "lcoh_pie.png")
+    fig.savefig(out, dpi=200, bbox_inches="tight", facecolor="white")
+    print(f"Plot gespeichert: {out}")
 
     if show_plot:
         plt.show()
-
+    plt.close(fig)
     return fig

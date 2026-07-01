@@ -81,4 +81,4 @@ price_parameters:                 # SH-Netz 2025
 pipe_parameters:
   kr: 0.04                        # mm
   specific_pressure_loss: 150     # Pa/m
-  specific_invest_pipe: 250       # Euro/m
+  specific_invest_pipe: 1000      # Euro/m

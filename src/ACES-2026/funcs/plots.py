@@ -384,7 +384,8 @@ def plot_energy_system_daily_stacked(demand, P_wp_res, gas_boiler_res,
     ax.set_xlabel("Day of year", fontsize=LABEL_FONTSIZE)
     ax.set_ylabel("Energy in MWh/day", fontsize=LABEL_FONTSIZE)
     ax.legend(fontsize=LEGEND_FONTSIZE, frameon=True, facecolor="white",
-              edgecolor="#CCCCCC", loc="upper right")
+              edgecolor="#CCCCCC", loc="upper center",
+              bbox_to_anchor=(0.5, 0.99), ncol=4)
     _ppt_style(ax)
 
     fig.tight_layout()

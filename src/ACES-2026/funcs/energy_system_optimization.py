@@ -403,7 +403,7 @@ def optimize_energy_system(
     print(f'Saisonalspeicher Ausspeisung:  {seasonal_discharge_res.sum():.2f} MWh/a')
 
     return (results, Q_hp_res, Q_gas_boiler_res, charge_res, discharge_res, SOC_res,
-            storage_cap_res, gas_boiler_cap_res,
+            storage_cap_res, gas_boiler_cap_res, hp_capacity_res,
             pv_res, pv_feed_in_res, pv_cap_res,
             seasonal_charge_res, seasonal_discharge_res, seasonal_soc_res, seasonal_cap_res)
 

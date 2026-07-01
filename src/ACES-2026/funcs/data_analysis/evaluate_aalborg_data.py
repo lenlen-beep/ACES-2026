@@ -106,55 +106,92 @@ def print_summary(summary: pd.DataFrame) -> None:
 
 def plot_results(summary: pd.DataFrame) -> None:
     cat_order  = [c[0] for c in CATEGORIES]
-    cat_colors = ["#4CAF50", "#2196F3", "#FF9800", "#E91E63", "#9C27B0"]
+    cat_colors = ["#2E86AB", "#A23B72", "#F18F01", "#C73E1D", "#3B1F2B"]
     color_map  = dict(zip(cat_order, cat_colors))
 
-    fig, axes = plt.subplots(1, 3, figsize=(16, 6))
-    fig.suptitle("Aalborg Smart Meter — Gebäudekategorisierung",
-                 fontsize=14, fontweight="bold")
+    plt.rcParams.update({
+        "font.family":      "sans-serif",
+        "font.size":        13,
+        "axes.titlesize":   14,
+        "axes.labelsize":   13,
+        "axes.spines.top":  False,
+        "axes.spines.right": False,
+        "axes.grid":        True,
+        "grid.color":       "#DDDDDD",
+        "grid.linewidth":   0.7,
+        "legend.frameon":   False,
+    })
 
-    # 1. Histogramm Jahresverbrauch
+    short_labels = [
+        "EFH",
+        "Kl. MFH",
+        "Gr. MFH",
+        "Gewerbe",
+        "Industrie",
+    ]
+    short_map = dict(zip(cat_order, short_labels))
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    fig.suptitle("Aalborg Fernwärme — Gebäudekategorisierung (n = 3.127)",
+                 fontsize=16, fontweight="bold", y=1.02)
+
+    # ── 1. Balkendiagramm Anzahl je Kategorie ──────────────────────────────
     ax = axes[0]
-    for cat, color in zip(cat_order, cat_colors):
-        sub = summary[summary["Kategorie"] == cat]["Jahresverbrauch_kWh"] / 1000
-        if len(sub):
-            ax.hist(sub, bins=30, color=color, alpha=0.7, label=cat)
-    ax.set_xlabel("Jahresverbrauch [MWh/Jahr]")
-    ax.set_ylabel("Anzahl Gebäude")
-    ax.set_title("Verteilung Jahresverbrauch")
-    ax.legend(fontsize=7)
-    ax.grid(True, alpha=0.3)
+    counts = (summary["Kategorie"]
+              .value_counts()
+              .reindex(cat_order)
+              .fillna(0)
+              .astype(int))
+    bars = ax.barh([short_map[c] for c in cat_order],
+                   [counts[c] for c in cat_order],
+                   color=cat_colors, edgecolor="white", height=0.6)
+    for bar, n in zip(bars, [counts[c] for c in cat_order]):
+        ax.text(bar.get_width() + 15, bar.get_y() + bar.get_height() / 2,
+                f"{n:,}", va="center", fontsize=12)
+    ax.set_xlabel("Anzahl Gebäude")
+    ax.set_title("Anzahl je Kategorie")
+    ax.set_xlim(0, counts.max() * 1.18)
+    ax.grid(axis="y", alpha=0)
 
-    # 2. Scatter: Jahresverbrauch vs. Maximalleistung
+    # ── 2. Boxplot Jahresverbrauch je Kategorie ────────────────────────────
     ax = axes[1]
-    for cat in cat_order:
+    data_by_cat = [
+        (summary[summary["Kategorie"] == cat]["Jahresverbrauch_kWh"] / 1000).dropna().values
+        for cat in cat_order
+    ]
+    bp = ax.boxplot(data_by_cat,
+                    vert=True, patch_artist=True,
+                    medianprops=dict(color="white", linewidth=2),
+                    whiskerprops=dict(linewidth=1.2),
+                    capprops=dict(linewidth=1.2),
+                    flierprops=dict(marker="o", markersize=2, alpha=0.4))
+    for patch, color in zip(bp["boxes"], cat_colors):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.85)
+    ax.set_yscale("log")
+    ax.set_xticklabels([short_map[c] for c in cat_order], rotation=20, ha="right")
+    ax.set_ylabel("Jahresverbrauch [MWh/a]")
+    ax.set_title("Verbrauchsverteilung je Kategorie")
+
+    # ── 3. Scatter: Verbrauch vs. Spitzenlast ─────────────────────────────
+    ax = axes[2]
+    for cat, color in zip(cat_order, cat_colors):
         grp = summary[summary["Kategorie"] == cat].dropna(subset=["MaxLeistung_kW"])
         if len(grp):
             ax.scatter(grp["Jahresverbrauch_kWh"] / 1000,
                        grp["MaxLeistung_kW"],
-                       label=cat, color=color_map[cat],
-                       s=10, alpha=0.6, zorder=3)
-    ax.set_xlabel("Jahresverbrauch [MWh/Jahr]")
+                       label=short_map[cat], color=color,
+                       s=18, alpha=0.65, linewidths=0)
+    ax.set_xlabel("Jahresverbrauch [MWh/a]")
     ax.set_ylabel("Maximalleistung [kW]")
     ax.set_title("Verbrauch vs. Spitzenlast")
-    ax.legend(fontsize=7)
-    ax.grid(True, alpha=0.3)
-
-    # 3. Tortendiagramm
-    ax = axes[2]
-    counts = (summary["Kategorie"]
-              .value_counts()
-              .reindex(cat_order)
-              .dropna()
-              .astype(int))
-    wedge_colors = [color_map[c] for c in counts.index]
-    ax.pie(counts.values, labels=counts.index, colors=wedge_colors,
-           autopct="%1.1f%%", startangle=90, textprops={"fontsize": 8})
-    ax.set_title("Kategorieverteilung")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.legend(fontsize=11, markerscale=1.8)
 
     plt.tight_layout()
     out = "src/ACES-2026/Data/aalborg_kategorisierung.png"
-    plt.savefig(out, dpi=150, bbox_inches="tight")
+    plt.savefig(out, dpi=200, bbox_inches="tight", facecolor="white")
     print(f"Plot gespeichert: {out}")
     plt.show()
 
