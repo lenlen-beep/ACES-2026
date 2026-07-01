@@ -45,6 +45,18 @@ import csv
 
 import numpy as np
 import pandas as pd
+
+# Plots in einem eigenen Fenster öffnen (nicht inline). Ein interaktives
+# GUI-Backend wird vor dem pyplot-Import gesetzt; das erste verfügbare Backend
+# wird verwendet (identisch zu Step 2).
+import matplotlib
+for _backend in ("Qt5Agg", "QtAgg", "TkAgg", "MacOSX"):
+    try:
+        matplotlib.use(_backend, force=True)
+        break
+    except Exception:
+        continue
+
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
@@ -52,8 +64,19 @@ import matplotlib.dates as mdates
 # 0) KONFIGURATION – hier anpassen
 # =============================================================================
 
-DATA_DIR = r"src/ACES-2026/Data/Aalborg_smart_meter_data"
+# Pfad robust relativ zur Skriptdatei auflösen, damit das Skript unabhängig
+# vom Arbeitsverzeichnis läuft (z. B. Spyder %runfile --wdir setzt das CWD auf
+# den Skript-Ordner, nicht auf die Projekt-Root).
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.normpath(
+    os.path.join(_SCRIPT_DIR, "..", "..", "Data", "Aalborg_smart_meter_data")
+)
 CONTEXT_FILENAME = "contextual_data.csv"
+
+# Cache der berechneten Plot-Daten (stündliche Matrix + Meter-Stats + Meta).
+# Wird am Ende von main() geschrieben, damit show_step1_plots.py die Plots ohne
+# erneutes Einlesen der ~25 Rohdateien sofort wieder anzeigen kann.
+CACHE_FILE = os.path.join(_SCRIPT_DIR, "step1_plot_cache.pkl")
 
 # Smart-Meter Spalten
 COL_DATETIME = "RoundedReadTime"
@@ -73,12 +96,71 @@ CTX_CONSTRUCTION = "construction_year"
 
 DAYFIRST = True
 
-# Plot-Style
+# Plot-Style (identisch zu Step 2)
 plt.rcParams.update({
     "figure.dpi": 110,
     "axes.grid": True,
     "grid.alpha": 0.25,
+    # Schrifttyp Calibri (Fallback auf DejaVu Sans, falls Calibri nicht installiert)
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Calibri", "Carlito", "DejaVu Sans"],
 })
+
+# Anzeigenamen für unit_type (Unterstriche raus, englische Bezeichnungen)
+UNIT_TYPE_LABELS = {
+    "apartment":           "Apartment",
+    "single_family_house": "Single Family House",
+    "terraced_house":      "Terraced House",
+    "non_residential":     "Non-Residential",
+    "unclear":             "Unclear",
+    "unbekannt":           "Unknown",
+}
+
+
+def unit_label(ut: str) -> str:
+    """Mappt einen unit_type-Rohwert auf den Anzeigenamen (ohne Unterstriche)."""
+    return UNIT_TYPE_LABELS.get(str(ut), str(ut).replace("_", " ").title())
+
+
+# Feste Farbe je unit_type (verankert nach Kategorie-NAME, nicht nach Position).
+# Dadurch sind die Farben unabhängig davon, welche Kategorien im Datensatz
+# vorkommen oder wie sie sortiert sind – Step 1 und Step 2 zeigen dieselbe
+# Kategorie immer in derselben Farbe.
+UNIT_TYPE_COLORS = {
+    "apartment":           "#4CAF50",  # grün
+    "single_family_house": "#2196F3",  # blau
+    "terraced_house":      "#FF9800",  # orange
+    "non_residential":     "#9C27B0",  # violett
+    "unclear":             "#E91E63",  # pink
+    "unbekannt":           "#607D8B",  # grau
+}
+# Fallback für evtl. weitere, hier nicht gelistete unit_types
+UNIT_TYPE_FALLBACK = ["#00BCD4", "#795548", "#3F51B5", "#CDDC39"]
+
+
+def type_colors(unit_types) -> dict:
+    """Farbe je unit_type: feste Zuordnung (UNIT_TYPE_COLORS), sonst Fallback."""
+    cmap, k = {}, 0
+    for t in unit_types:
+        if t in UNIT_TYPE_COLORS:
+            cmap[t] = UNIT_TYPE_COLORS[t]
+        else:
+            cmap[t] = UNIT_TYPE_FALLBACK[k % len(UNIT_TYPE_FALLBACK)]
+            k += 1
+    return cmap
+
+
+# Englische Anzeigenamen für die Baujahr-Klassen (Datenwerte bleiben unverändert)
+BAUJAHR_LABELS_EN = {
+    "vor 1919":  "before 1919",
+    "1919–1948": "1919–1948",
+    "1949–1968": "1949–1968",
+    "1969–1978": "1969–1978",
+    "1979–1994": "1979–1994",
+    "1995–2009": "1995–2009",
+    "ab 2010":   "from 2010",
+    "Unbekannt": "Unknown",
+}
 
 # =============================================================================
 # 1) HILFSFUNKTIONEN
@@ -307,82 +389,76 @@ def compute_meter_stats(df_2019: pd.DataFrame, df_hourly: pd.DataFrame) -> pd.Da
 
 def plot_stats_panel(meter_stats: pd.DataFrame) -> None:
     """
-    3 Plots in einem Panel (Korrektur [2] + [3]):
+    Plots 1–3 (Stil identisch zu Step 2, aber für den VOLLEN Datensatz):
 
     Plot 1 – Histogramm Jahresverbrauch (MWh) je unit_type
     Plot 2 – Scatter Jahresverbrauch vs. Spitzenlast je unit_type
-             Jahresverbrauch: aus Energiezähler (unabhängige Quelle)
-             Spitzenlast:     tatsächlicher Peak aus Effekt 1 (stündlich)
-    Plot 3 – Pie: ANZAHL METER je unit_type
-             -> zeigt die Haustyp-Struktur des Datensatzes
-             -> NICHT den Energiebeitrag (das ist Pie in Plot 5)
+    Plot 3 – Pie: ANZAHL Meter je unit_type (Haustyp-Struktur, nicht Energiebeitrag)
+
+    Inhaltlich identisch zur Vorversion; nur Stil/Abstände/Beschriftung wie Step 2.
     """
     unit_types_sorted = sorted(meter_stats["unit_type"].fillna("unbekannt").unique().tolist())
-    palette    = ["#4CAF50", "#2196F3", "#FF9800", "#9C27B0", "#E91E63", "#00BCD4", "#607D8B"]
-    type_color = {t: palette[i % len(palette)] for i, t in enumerate(unit_types_sorted)}
+    type_color = type_colors(unit_types_sorted)
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-    fig.suptitle(
-        "Aalborg Smart Meter – Kennwerte 2019 je Haustyp\n"
-        "(Jahresverbrauch: Energiezähler max−min  |  Spitzenlast: tatsächlicher Effekt-1-Peak)",
-        fontsize=12, fontweight="bold"
-    )
+    # Manuelles Layout: größerer Abstand zwischen den Diagrammen (wspace) und
+    # größerer Abstand zwischen Hauptüberschrift (y) und Diagramm-Überschriften (top).
+    fig.subplots_adjust(left=0.055, right=0.965, top=0.80, bottom=0.12, wspace=0.34)
+    fig.suptitle("Full Heat Demand Data for 2019 per Type of House",
+                 fontsize=14, fontweight="bold", y=0.96)
 
-    # --- Plot 1: Histogramm Jahresverbrauch ---
+    # Plot 1: Histogramm Jahresverbrauch
+    # Reihenfolge nach Anzahl absteigend -> kleinste Kategorie (z.B. Apartment/grün)
+    # wird zuletzt und mit höchstem zorder gezeichnet und bleibt sichtbar.
     ax = axes[0]
-    for ut in unit_types_sorted:
+    order_by_count = (
+        meter_stats["unit_type"].value_counts()
+        .reindex(unit_types_sorted).fillna(0)
+        .sort_values(ascending=False).index.tolist()
+    )
+    for z, ut in enumerate(order_by_count):
         sub = meter_stats.loc[meter_stats["unit_type"] == ut, "annual_kwh_2019"].dropna() / 1000
         if len(sub):
-            ax.hist(sub, bins=30, color=type_color[ut], alpha=0.7, label=ut)
-    ax.set_xlabel("Jahresverbrauch [MWh/Jahr]")
-    ax.set_ylabel("Anzahl Meter")
-    ax.set_title("Verteilung Jahresverbrauch\n(Quelle: Energiezähler max−min)")
+            ax.hist(sub, bins=20, color=type_color[ut], alpha=1.0,
+                    label=unit_label(ut), zorder=2 + z,
+                    edgecolor="white", linewidth=0.3)
+    ax.set_xlabel("Annual Heat Demand [MWh/year]")
+    ax.set_ylabel("Number of Meters")
+    ax.set_title("Annual Heat Demand Distribution")
     ax.legend(fontsize=8)
 
-    # --- Plot 2: Scatter Jahresverbrauch vs. tatsächliche Spitzenlast ---
+    # Plot 2: Scatter Jahresverbrauch vs. Spitzenlast (Punkte voll ausgefüllt)
     ax = axes[1]
     for ut in unit_types_sorted:
         grp = meter_stats[meter_stats["unit_type"] == ut].dropna(
             subset=["annual_kwh_2019", "peak_kw_2019"]
         )
         if len(grp):
-            ax.scatter(
-                grp["annual_kwh_2019"] / 1000,
-                grp["peak_kw_2019"],
-                color=type_color[ut], s=10, alpha=0.6, label=ut
-            )
-    ax.set_xlabel("Jahresverbrauch [MWh/Jahr]\n(Quelle: Energiezähler)")
-    ax.set_ylabel("Spitzenlast [kW]\n(Quelle: max. stündl. Effekt 1)")
-    ax.set_title("Jahresverbrauch vs. Spitzenlast\n(beide Quellen unabhängig voneinander)")
+            ax.scatter(grp["annual_kwh_2019"] / 1000, grp["peak_kw_2019"],
+                       color=type_color[ut], s=18, alpha=1.0,
+                       edgecolor="none", label=unit_label(ut))
+    ax.set_xlabel("Annual Heat Demand [MWh/year]")
+    ax.set_ylabel("Peak Load [kW]")
+    ax.set_title("Annual Heat Demand vs. Peak Load")
     ax.legend(fontsize=8)
 
-    # --- Plot 3: Pie – ANZAHL METER je unit_type ---
-    # Korrektur [3]: Dieser Pie zeigt Haustyp-Struktur (Meter-Anzahl).
-    # Bewusst verschieden von Pie in Plot 5, der Energieanteile zeigt.
+    # Plot 3: Pie – Anzahl Meter je Haustyp (kleine Prozentwerte außerhalb)
     ax = axes[2]
     counts = (
         meter_stats["unit_type"].fillna("unbekannt")
-        .value_counts()
-        .reindex(unit_types_sorted)
-        .fillna(0)
-        .astype(int)
+        .value_counts().reindex(unit_types_sorted).fillna(0).astype(int)
     )
-    ax.pie(
-        counts.values,
-        labels=counts.index,
-        colors=[type_color[t] for t in counts.index],
-        autopct="%1.1f%%",
-        startangle=90,
-        textprops={"fontsize": 9},
+    _pie_with_outside_small_pct(
+        ax,
+        counts.values.tolist(),
+        [unit_label(t) for t in counts.index],
+        [type_color[t] for t in counts.index],
+        radius=0.72,                 # kleiner -> mehr Abstand Titel <-> Außenlabel
+        group_small_labels=True,     # "Apartment" + Prozentzahl gruppiert nach außen
     )
-    ax.set_title(
-        "Haustyp-Struktur: Anteil Meter je Typ\n"
-        "(Anzahl Meter – NICHT Energiebeitrag)\n"
-        "→ vgl. Energieanteil: Plot 5",
-        fontsize=8, fontweight="bold"
-    )
+    # pad: zusätzlicher Abstand zwischen Pie-Titel und der außenliegenden Prozentzahl
+    ax.set_title("Share of Meters per Type of House", pad=18)
 
-    plt.tight_layout()
     plt.show()
 
 
@@ -391,25 +467,131 @@ def _nan_fraction_per_hour(df_hourly: pd.DataFrame) -> pd.Series:
     return df_hourly.isna().mean(axis=1) * 100
 
 
+def _add_nan_axis(ax_main: plt.Axes, df_hourly: pd.DataFrame,
+                  line_color: str = "red"):
+    """
+    Zweite Y-Achse mit Anteil fehlender Meter je Stunde (identisch zu Step 2).
+
+    Achsenzahlen und Achsentitel sind schwarz; die gestrichelte Linie behält ihre
+    Farbe (Standard rot, in Plot 6 schwarz wegen des bunten Hintergrunds).
+    Gibt die zweite Achse und das Linien-Handle (für die Legende) zurück.
+    """
+    nan_frac = _nan_fraction_per_hour(df_hourly)
+    ax_r = ax_main.twinx()
+    ax_r.fill_between(df_hourly.index, nan_frac.values, alpha=0.12, color=line_color)
+    line, = ax_r.plot(df_hourly.index, nan_frac.values, color=line_color,
+                      linewidth=0.9, linestyle="--",
+                      label="Share of meters without reading [%]")
+    ax_r.set_ylabel("Share of meters without reading [%]", color="black", fontsize=9)
+    ax_r.tick_params(axis="y", labelcolor="black")
+    ax_r.set_ylim(0, 100)
+    return ax_r, line
+
+
+def _place_outside_labels(ax: plt.Axes, entries, side: int, radius: float,
+                          min_gap_frac: float = 0.36) -> None:
+    """
+    Verteilt Außen-Labels einer Pie-Seite (links oder rechts) vertikal so, dass
+    zwischen ihnen ein Mindestabstand bleibt (keine Überlappung), und verbindet
+    jedes Label per Leitlinie mit seinem Segment.
+
+    entries : Liste von (cy, cx, text) – cx/cy = Einheits-Mittelwinkel des Segments.
+    side    : +1 = rechte Halbebene, -1 = linke Halbebene.
+    """
+    if not entries:
+        return
+    # Von oben nach unten sortieren
+    entries = sorted(entries, key=lambda e: e[0], reverse=True)
+    min_gap = min_gap_frac * radius
+    desired = [cy * radius for cy, _, _ in entries]
+    ys = list(desired)
+    # Mindestabstand nach unten erzwingen (verhindert Überlappen)
+    for i in range(1, len(ys)):
+        if ys[i] > ys[i - 1] - min_gap:
+            ys[i] = ys[i - 1] - min_gap
+    # Label-Block auf die gewünschten Positionen zentrieren
+    shift = (sum(desired) - sum(ys)) / len(ys)
+    ys = [y + shift for y in ys]
+    # In den sichtbaren Bereich klemmen
+    ylim = 1.45 * radius
+    if ys[0] > ylim:
+        ys = [y - (ys[0] - ylim) for y in ys]
+    if ys[-1] < -ylim:
+        ys = [y + (-ylim - ys[-1]) for y in ys]
+
+    x_text = side * 1.22 * radius
+    ha = "left" if side > 0 else "right"
+    for (cy, cx, text), yt in zip(entries, ys):
+        ax.annotate(
+            text,
+            xy=(cx * radius, cy * radius),          # Segment-Rand
+            xytext=(x_text, yt),                     # entzerrte Label-Position
+            ha=ha, va="center", fontsize=9, linespacing=1.4,
+            annotation_clip=False,
+            arrowprops=dict(arrowstyle="-", color="0.45", lw=0.8,
+                            shrinkA=2, shrinkB=4,
+                            connectionstyle="arc3,rad=0.0"),
+        )
+
+
+def _pie_with_outside_small_pct(ax: plt.Axes, values, labels, colors,
+                                threshold: float = 8.0, startangle: int = 90,
+                                radius: float = 1.0,
+                                group_small_labels: bool = True):
+    """
+    Kreisdiagramm mit außenliegenden Beschriftungen und garantiert
+    überlappungsfreien Labels (vertikale Entzerrung je Seite, siehe
+    _place_outside_labels):
+
+    - Große Segmente (>= threshold %): Prozentwert mittig im Segment, Name außen.
+    - Kleine Segmente (< threshold %): Name + Prozentwert gemeinsam außen.
+
+    Jede Außenbeschriftung ist über eine Leitlinie mit ihrem Segment verbunden;
+    Linien und Texte berühren oder überlappen sich nicht.
+
+    radius : Radius des Kreises (kleiner = mehr Platz für Außenbeschriftung/Titel).
+    group_small_labels : aus Kompatibilität erhalten, ohne Wirkung (Namen liegen
+        grundsätzlich außen).
+    """
+    total = float(sum(values)) or 1.0
+    wedges, _ = ax.pie(values, colors=colors, startangle=startangle,
+                       radius=radius, textprops={"fontsize": 9})
+
+    # Außen-Labels sammeln, getrennt nach rechter/linker Halbebene
+    right, left = [], []
+    for w, val, lab in zip(wedges, values, labels):
+        pct = val / total * 100.0
+        ang = np.deg2rad((w.theta1 + w.theta2) / 2.0)
+        cx, cy = np.cos(ang), np.sin(ang)
+        if pct < threshold:
+            text = f"{lab}\n{pct:.1f}%"
+        else:
+            # Prozentwert mittig ins Segment
+            ax.text(0.6 * radius * cx, 0.6 * radius * cy, f"{pct:.1f}%",
+                    ha="center", va="center", fontsize=9)
+            text = f"{lab}"
+        (right if cx >= 0 else left).append((cy, cx, text))
+
+    _place_outside_labels(ax, right, side=+1, radius=radius)
+    _place_outside_labels(ax, left,  side=-1, radius=radius)
+    return wedges
+
+
 def plot_series_panels(df_hourly: pd.DataFrame, df_meta: pd.DataFrame) -> None:
     """
-    Plots 4–6: Zeitreihen der Wärmeleistung 2019.
+    Plots 4–6 (Stil identisch zu Step 2, aber für den VOLLEN Datensatz):
+    Zeitreihe Gesamtlast, Stack nach unit_type + Pie Jahresenergie, Stack nach Baujahr.
 
-    NaN-Behandlung (Korrektur [4]):
-    - Stündliche Summen werden mit nansum berechnet: Fehlende Meter tragen 0 bei,
+    NaN-Behandlung (inhaltlich unverändert):
+    - Stündliche Summen mit nansum (min_count=1): Fehlende Meter tragen 0 bei,
       vollständig fehlende Stunden bleiben NaN.
-    - Dies kann die tatsächliche Last in Stunden mit vielen fehlenden Metern
-      unterschätzen. Deshalb zeigt jeder Stack-Plot eine zweite Y-Achse (rot,
-      gestrichelt) mit dem prozentualen Anteil fehlender Meter je Stunde.
-    - Hohe rote Werte = Ergebnis in diesem Zeitraum mit Vorsicht interpretieren.
+    - Jede Figur zeigt eine zweite Y-Achse (gestrichelt) mit dem prozentualen
+      Anteil fehlender Meter je Stunde -> hohe Werte mit Vorsicht interpretieren.
     """
-    # Gesamtlast (min_count=1: vollständig fehlende Stunden bleiben NaN)
     total_heat = df_hourly.sum(axis=1, min_count=1)
+    nan_frac   = _nan_fraction_per_hour(df_hourly)
 
-    # NaN-Anteil je Stunde (Prozent)
-    nan_frac = _nan_fraction_per_hour(df_hourly)
-
-    # Aggregation nach unit_type
+    # Aggregation nach unit_type (meter_id ist hier eine Spalte von df_meta)
     heat_by_type: dict[str, pd.Series] = {}
     for ut, mids in df_meta.groupby("unit_type")["meter_id"]:
         cols = [m for m in mids if m in df_hourly.columns]
@@ -425,124 +607,102 @@ def plot_series_panels(df_hourly: pd.DataFrame, df_meta: pd.DataFrame) -> None:
         if cols:
             heat_by_baujahr[bk] = df_hourly[cols].sum(axis=1, min_count=1)
 
-    # Farbpaletten
     types_sorted = sorted(heat_by_type.keys())
-    palette      = ["#4CAF50", "#2196F3", "#FF9800", "#9C27B0", "#E91E63", "#00BCD4", "#607D8B"]
-    color_map    = {t: palette[i % len(palette)] for i, t in enumerate(types_sorted)}
+    color_map    = type_colors(types_sorted)
     b_palette    = ["#7B1FA2", "#C62828", "#EF6C00", "#F9A825", "#558B2F", "#0277BD", "#00838F", "#9E9E9E"]
     b_color      = {bk: b_palette[i % len(b_palette)] for i, bk in enumerate(BAUJAHR_ORDER)}
 
-    def _add_nan_axis(ax_main: plt.Axes) -> plt.Axes:
-        """Fügt zweite Y-Achse mit NaN-Anteil (rot, gestrichelt) hinzu."""
-        ax_r = ax_main.twinx()
-        ax_r.fill_between(df_hourly.index, nan_frac.values, alpha=0.12, color="red")
-        ax_r.plot(df_hourly.index, nan_frac.values, color="red", linewidth=0.6,
-                  linestyle="--", label="Fehlende Meter [%]")
-        ax_r.set_ylabel("Anteil fehlender Meter [%]", color="red", fontsize=8)
-        ax_r.tick_params(axis="y", labelcolor="red")
-        ax_r.set_ylim(0, 100)
-        return ax_r
-
-    # -------------------------------------------------------------------------
-    # Plot 4: Gesamtlast + NaN-Anteil
-    # -------------------------------------------------------------------------
-    fig1, ax1 = plt.subplots(figsize=(16, 5))
-    ax1.plot(df_hourly.index, total_heat.values, color="#1f77b4", linewidth=0.7)
-    ax1.set_title(
-        "Gesamtwärmeleistung (Summe Effekt 1, NaN ignoriert) – 2019\n"
-        "Rote Linie: Anteil Meter ohne Messwert je Stunde",
-        fontweight="bold"
-    )
-    ax1.set_xlabel("Datum")
-    ax1.set_ylabel("Wärmeleistung [kW]")
+    # --- Plot 4: Gesamtlast + NaN-Anteil ---
+    fig1, ax1 = plt.subplots(figsize=(16, 5), constrained_layout=True)
+    line_load, = ax1.plot(df_hourly.index, total_heat.values, color="#1f77b4",
+                          linewidth=0.9, label="Total heat load [kW]")
+    ax1.set_title("Total Heat Load in 2019", fontweight="bold")
+    ax1.set_xlabel("Month")
+    ax1.set_ylabel("Heat Load [kW]")
     ax1.xaxis.set_major_locator(mdates.MonthLocator())
     ax1.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
-    _add_nan_axis(ax1)
-
+    ax_r1, line_nan = _add_nan_axis(ax1, df_hourly)
+    # Infobox + Legende in der oberen Mitte (über dem Sommer-Tief, frei von Daten)
     ax1.annotate(
-        f"Gesamt-NaN-Anteil (Stunden ohne jeden Wert): {total_heat.isna().mean():.2%}\n"
-        f"Ø NaN-Meter je Stunde: {nan_frac.mean():.1f}%\n"
-        f"Max Gesamtlast: {np.nanmax(total_heat.values):.1f} kW  "
-        f"| Ø Gesamtlast: {np.nanmean(total_heat.values):.1f} kW",
-        xy=(0.01, 0.97), xycoords="axes fraction", va="top",
+        f"NaN share total: {total_heat.isna().mean():.2%}\n"
+        f"Avg. NaN meters per hour: {nan_frac.mean():.1f}%\n"
+        f"Max: {np.nanmax(total_heat.values):.1f} kW  "
+        f"| Avg.: {np.nanmean(total_heat.values):.1f} kW",
+        xy=(0.5, 0.98), xycoords="axes fraction", ha="center", va="top",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.85),
         fontsize=8,
     )
-    fig1.tight_layout()
+    ax1.legend([line_load, line_nan],
+               [line_load.get_label(), line_nan.get_label()],
+               loc="upper center", bbox_to_anchor=(0.5, 0.78), fontsize=9)
     plt.show()
 
-    # -------------------------------------------------------------------------
-    # Plot 5: Stack nach unit_type + Pie nach Jahresenergie
-    # Korrektur [3]: Pie hier zeigt ENERGIEBEITRAG je Haustyp (nicht Meter-Anzahl).
-    # Titel macht den Unterschied zu Plot 3 (Meter-Anzahl) explizit sichtbar.
-    # -------------------------------------------------------------------------
-    fig2, (ax2a, ax2b) = plt.subplots(1, 2, figsize=(18, 6), gridspec_kw={"width_ratios": [3, 1]})
-
+    # --- Plot 5: Stack unit_type + Pie Jahresenergie ---
+    fig2, (ax2a, ax2b) = plt.subplots(1, 2, figsize=(18, 6),
+                                       gridspec_kw={"width_ratios": [3, 1.25]})
+    # Manuelles Layout: größerer Abstand zwischen Stack und Pie (wspace) und
+    # größerer Abstand zwischen Hauptüberschrift (y) und Diagramm-Überschriften (top).
+    fig2.subplots_adjust(left=0.06, right=0.965, top=0.80, bottom=0.12, wspace=0.30)
+    fig2.suptitle("Full Heat Load per Type of House in 2019",
+                  fontsize=13, fontweight="bold", y=0.98)
     bottom = np.zeros(len(df_hourly.index))
     for t in types_sorted:
         vals = np.nan_to_num(heat_by_type[t].to_numpy(), nan=0.0)
         ax2a.fill_between(df_hourly.index, bottom, bottom + vals,
-                          alpha=0.75, color=color_map[t], label=t)
+                          alpha=0.85, color=color_map[t], label=unit_label(t))
         bottom += vals
-
-    _add_nan_axis(ax2a)
-    ax2a.set_title(
-        "Gesamtwärmeleistung nach Haustyp – 2019\n"
-        "(Rote Linie: Anteil Meter ohne Messwert je Stunde)",
-        fontweight="bold"
-    )
-    ax2a.set_xlabel("Datum")
-    ax2a.set_ylabel("Wärmeleistung [kW]")
+    ax_r2, line_nan2 = _add_nan_axis(ax2a, df_hourly)
+    ax2a.set_xlabel("Month")
+    ax2a.set_ylabel("Heat Load [kW]")
     ax2a.xaxis.set_major_locator(mdates.MonthLocator())
     ax2a.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
-    ax2a.legend(fontsize=9, loc="upper right")
+    handles, labels = ax2a.get_legend_handles_labels()
+    handles.append(line_nan2)
+    labels.append(line_nan2.get_label())
+    ax2a.legend(handles, labels, fontsize=9, loc="upper right")
 
-    # Pie: ENERGIEBEITRAG je Haustyp (bewusst verschieden von Plot 3: Meter-Anzahl)
+    # Pie: ENERGIEBEITRAG je Haustyp (inhaltlich verschieden von Plot 3: Meter-Anzahl)
     pie_labels, pie_vals, pie_cols = [], [], []
     for t in types_sorted:
         e = float(np.nansum(heat_by_type[t].values))
         if e > 0:
-            pie_labels.append(t)
+            pie_labels.append(unit_label(t))
             pie_vals.append(e)
             pie_cols.append(color_map[t])
-
-    ax2b.pie(pie_vals, labels=pie_labels, colors=pie_cols,
-             autopct="%1.1f%%", startangle=90, textprops={"fontsize": 9})
-    ax2b.set_title(
-        "Anteil am Jahreswärmebedarf\nje Haustyp (Effekt-1-Energie)\n"
-        "≠ Plot 3 (Anteil Meter-Anzahl)",
-        fontsize=8, fontweight="bold"
+    _pie_with_outside_small_pct(
+        ax2b, pie_vals, pie_labels, pie_cols,
+        radius=0.85,                 # etwas größer, Abstand bleibt durch Titel-pad
+        group_small_labels=True,     # kleine Segmente: Bezeichnung + % seitlich versetzt
     )
-
-    fig2.tight_layout()
+    # pad: Titel nach oben, damit über dem größeren Pie genug Abstand bleibt
+    ax2b.set_title("Share of Annual Heat Demand", pad=26)
     plt.show()
 
-    # -------------------------------------------------------------------------
-    # Plot 6: Stack nach Baujahr-Klasse + NaN-Anteil
-    # -------------------------------------------------------------------------
-    fig3, ax3 = plt.subplots(figsize=(16, 6))
+    # --- Plot 6: Stack Baujahr-Klasse + NaN-Anteil ---
+    fig3, ax3 = plt.subplots(figsize=(16, 6), constrained_layout=True)
     bottom = np.zeros(len(df_hourly.index))
     for bk in BAUJAHR_ORDER:
         if bk not in heat_by_baujahr:
             continue
         vals = np.nan_to_num(heat_by_baujahr[bk].to_numpy(), nan=0.0)
         ax3.fill_between(df_hourly.index, bottom, bottom + vals,
-                         alpha=0.75, color=b_color[bk], label=bk)
+                         alpha=0.85, color=b_color[bk],
+                         label=BAUJAHR_LABELS_EN.get(bk, bk))
         bottom += vals
-
-    _add_nan_axis(ax3)
-    ax3.set_title(
-        "Gesamtwärmeleistung nach Baujahr-Klasse – 2019\n"
-        "(Rote Linie: Anteil Meter ohne Messwert je Stunde)",
-        fontweight="bold"
-    )
-    ax3.set_xlabel("Datum")
-    ax3.set_ylabel("Wärmeleistung [kW]")
+    # NaN-Linie schwarz, da Rot auf dem bunten Hintergrund nicht sichtbar ist
+    ax_r3, line_nan3 = _add_nan_axis(ax3, df_hourly, line_color="black")
+    ax3.set_title("Full Heat Load of 2019 per Construction Year", fontweight="bold")
+    ax3.set_xlabel("Month")
+    ax3.set_ylabel("Heat Load [kW]")
     ax3.xaxis.set_major_locator(mdates.MonthLocator())
     ax3.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
-    ax3.legend(fontsize=9, loc="upper right", title="Baujahr")
-
-    fig3.tight_layout()
+    handles, labels = ax3.get_legend_handles_labels()
+    handles.append(line_nan3)
+    labels.append(line_nan3.get_label())
+    # Legende in die obere Mitte (über das Sommer-Tief), mehrspaltig und kompakt,
+    # damit sie die Stack-Flächen (Winterspitzen links/rechts) nicht verdeckt.
+    ax3.legend(handles, labels, fontsize=8, loc="upper center", ncol=3,
+               title="Construction Year", framealpha=0.9)
     plt.show()
 
 
@@ -624,6 +784,14 @@ def main():
     n_neg = int((meter_stats["annual_kwh_2019"] < 0).sum())
     if n_neg:
         print(f"  Warnung: {n_neg} Meter mit negativer Jahresenergie (Zählerreset möglich)")
+
+    # Cache der Plot-Daten schreiben, damit show_step1_plots.py die Plots ohne
+    # erneutes Einlesen der Rohdaten sofort wieder anzeigen kann.
+    print(f"\nSchreibe Plot-Cache: {CACHE_FILE}")
+    pd.to_pickle(
+        {"df_hourly": df_hourly, "meter_stats": meter_stats, "df_meta": df_meta},
+        CACHE_FILE,
+    )
 
     # Plots 1–3: Statistik-Panel
     plot_stats_panel(meter_stats)

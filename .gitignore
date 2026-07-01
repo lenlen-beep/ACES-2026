@@ -7,3 +7,6 @@
 *.gpkg-shm
 *.gpkg-wal
 *.png
+# Step-1 Plot-Cache (von step1_full_heat_demand.py erzeugt, kann groß werden)
+step1_plot_cache.pkl
+**/step1_plot_cache.pkl
