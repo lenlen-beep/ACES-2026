@@ -2,7 +2,7 @@
 Eigenständiges Skript/Modul: ERA5-Wetterdaten (Temperatur, Globalstrahlung, direkte
 Strahlung, Windgeschwindigkeit) via Copernicus Climate Data Store (CDS), plus eigenes
 PV-Ertragsmodell mit pvlib. Ausführen als Skript liefert eine CSV mit den stündlichen
-Wetter- und PV-Daten für ein Jahr (Standard: Flensburg, 2019):
+Wetter- und PV-Daten für ein Jahr (Standard: Jerrishoe, 2019):
 
     python -m funcs.era5_weather --year 2019
 
@@ -26,9 +26,9 @@ import xarray as xr
 import pvlib
 from pathlib import Path
 
-# default: Flensburg (gleiche Koordinaten wie read_data.LAT/LON)
-LAT = 54.78
-LON = 9.43
+# default: Jerrishoe (Standort des simulierten Nahwärmenetzes)
+LAT = 54.65699858112733
+LON = 9.37165074067953
 
 # Absolut statt cwd-relativ, damit es unabhängig vom Arbeitsverzeichnis funktioniert
 # (Spyder setzt beim Direktstart eines Skripts sonst dessen eigenen Ordner als cwd).

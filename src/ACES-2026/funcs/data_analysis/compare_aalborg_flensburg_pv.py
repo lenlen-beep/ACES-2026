@@ -154,7 +154,7 @@ if __name__ == "__main__":
         print(f"\n⚠  Aalborg-Datei fehlt: {FILE_AA}")
         print("   Bitte von renewables.ninja herunterladen:")
         print("   lat=57.05, lon=9.92, tilt=35°, azimuth=180°, capacity=1 kWp, Jahr=2019\n")
-        exit(1)
+        sys.exit(1)
 
     print("Lade PV-Daten …")
     fl = load_pv(FILE_FL, "Flensburg")
