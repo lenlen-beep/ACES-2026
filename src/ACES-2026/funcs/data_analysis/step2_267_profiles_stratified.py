@@ -103,7 +103,7 @@ DAYFIRST = True
 # Sampling
 N_TARGET   = 267
 N_BINS     = 10
-RANDOM_SEED = 42
+RANDOM_SEED = 42                      # Fixed for reproducability
 
 # Mindestabdeckung Effekt 1 [2]
 # Meter mit weniger als MIN_COVERAGE_FRAC * 8760 Stunden Effekt1-Daten werden

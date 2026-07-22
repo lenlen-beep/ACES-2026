@@ -47,6 +47,9 @@ system_parameters:
     initial_pv_capacity: 5        # MW
     feed_in_tariff: 50            # Euro/MWh (Ø BNetzA-Gebote 2024-2026)
     specific_area_usage: 100      # Wp/m2
+    surface_tilt: 35              # Grad, Modulneigung (Standard Norddeutschland)
+    surface_azimuth: 180          # Grad, Südausrichtung (pvlib-Konvention: 180 = Süd)
+    performance_ratio: 0.85       # Systemverluste (Verkabelung, Wechselrichter, Verschmutzung, ...)
 
 invest_parameters:
   lifetime_years: 20              # a
