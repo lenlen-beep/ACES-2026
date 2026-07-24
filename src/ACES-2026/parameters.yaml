@@ -26,6 +26,10 @@ system_parameters:
     initial_hp_capacity: 3       # MW
     invest_offset_hp: 0           # Euro
     specific_invest_hp: 1200000    # Euro/MW claude: 800000, alt 1200000
+    eta_carnot: 0.45               # Gütegrad rel. zum Carnot-Wirkungsgrad, für COP_t (era5_weather.py)
+                                    # Literaturwert, typisch für große WP: 0.40-0.50 (nicht für diese
+                                    # Anlage validiert) -- nicht zu verwechseln mit dem statischen COP oben,
+                                    # der aktuell im Optimierungsmodell verwendet wird
 
   gas_boiler:
     eta_gas_boiler: 0.98

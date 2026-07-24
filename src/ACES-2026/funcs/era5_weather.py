@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import pvlib
+import yaml
 from pathlib import Path
 
 # default: Jerrishoe (Standort des simulierten Nahwärmenetzes)
@@ -34,6 +35,20 @@ LON = 9.37165074067953
 # (Spyder setzt beim Direktstart eines Skripts sonst dessen eigenen Ordner als cwd).
 REPO_SRC_DIR = Path(__file__).resolve().parents[1]   # .../src/ACES-2026
 CACHE_DIR    = str(REPO_SRC_DIR / "Data" / "era5_cache")
+
+
+def _project_parameters():
+    """
+    Liest parameters.yaml (einzige Quelle der Wahrheit für T_supply_C, eta_carnot,
+    performance_ratio, ...). Wird bei jedem Aufruf neu gelesen (keine Caching-Logik),
+    damit Änderungen an parameters.yaml sofort wirken, ohne den Kernel neu zu starten.
+    Gibt {} zurück, falls die Datei fehlt, statt abzubrechen.
+    """
+    try:
+        with open(REPO_SRC_DIR / "parameters.yaml") as f:
+            return yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return {}
 
 ERA5_VARIABLES = [
     "2m_temperature",
@@ -245,8 +260,20 @@ def load_era5_weather(year, lat=LAT, lon=LON, cache_dir=CACHE_DIR, buffer_deg=0.
 # Temperaturabhängiger COP der Wärmepumpe (Carnot-Ansatz)
 #-------------------------------------------------------------------------
 
-def compute_cop(T_amb_C, T_supply_C=80.0, eta_carnot=0.45, cop_min=1.5, cop_max=7.0):
-    """Temperaturabhängiger COP (Carnot-Wirkungsgrad-Ansatz), begrenzt auf [cop_min, cop_max]."""
+def compute_cop(T_amb_C, T_supply_C=None, eta_carnot=None, cop_min=1.5, cop_max=7.0):
+    """
+    Temperaturabhängiger COP (Carnot-Wirkungsgrad-Ansatz), begrenzt auf [cop_min, cop_max].
+    T_supply_C/eta_carnot werden, falls nicht explizit übergeben, aus parameters.yaml
+    gelesen (net_parameters.supply_temperature bzw. system_parameters.HP.eta_carnot) --
+    fällt auf 80.0/0.45 zurück, falls dort (noch) nicht vorhanden.
+    """
+    if T_supply_C is None or eta_carnot is None:
+        params = _project_parameters()
+        if T_supply_C is None:
+            T_supply_C = params.get("net_parameters", {}).get("supply_temperature", 80.0)
+        if eta_carnot is None:
+            eta_carnot = params.get("system_parameters", {}).get("HP", {}).get("eta_carnot", 0.45)
+
     T_vl_K  = T_supply_C + 273.15
     T_amb_K = T_amb_C + 273.15
     cop = eta_carnot * T_vl_K / (T_vl_K - T_amb_K)
@@ -258,12 +285,19 @@ def compute_cop(T_amb_C, T_supply_C=80.0, eta_carnot=0.45, cop_min=1.5, cop_max=
 #-------------------------------------------------------------------------
 
 def compute_pv_generation(weather, lat=LAT, lon=LON, surface_tilt=35, surface_azimuth=180,
-                           pv_capacity_MW=5.0, performance_ratio=0.85):
+                           pv_capacity_MW=5.0, performance_ratio=None):
     """
     Stündliche PV-Erzeugung [MW] aus ERA5-Strahlungsdaten (weather: DataFrame mit
     GHI_Wm2/DNI_Wm2/DHI_Wm2 wie von load_era5_weather geliefert) via pvlib:
     Sonnenstand -> Einstrahlung auf geneigte Modulfläche (POA) -> PV-Leistung.
+    performance_ratio wird, falls nicht explizit übergeben, aus parameters.yaml
+    (system_parameters.PV.performance_ratio) gelesen -- fällt auf 0.85 zurück.
     """
+    if performance_ratio is None:
+        performance_ratio = (
+            _project_parameters().get("system_parameters", {}).get("PV", {}).get("performance_ratio", 0.85)
+        )
+
     # Sonnenstandsberechnung braucht einen eindeutigen (tz-aware) Kalender;
     # UTC ist hierfür ausreichend genau und eindeutig (kein DST-Mehrdeutigkeitsproblem).
     index_utc = pd.DatetimeIndex(weather.index, tz="UTC")
@@ -291,12 +325,14 @@ def compute_pv_generation(weather, lat=LAT, lon=LON, surface_tilt=35, surface_az
 
 def load_era5_model_inputs(year=2019, lat=LAT, lon=LON, cache_dir=CACHE_DIR,
                             surface_tilt=35, surface_azimuth=180,
-                            pv_capacity_MW=5.0, performance_ratio=0.85,
-                            T_supply_C=80.0, eta_carnot=0.45, max_parallel=6):
+                            pv_capacity_MW=5.0, performance_ratio=None,
+                            T_supply_C=None, eta_carnot=None, max_parallel=6):
     """
     Ein Aufruf -> alle ERA5-basierten Modell-Inputs: T_amb_C, wind_speed_ms,
     GHI/DHI/DNI_Wm2, COP_t (temperaturabhängig) und P_PV_MW (eigenes PV-Modell).
     Ersetzt load_temperature_data() + read_pv_data() für das Optimierungsmodell.
+    performance_ratio/T_supply_C/eta_carnot: siehe compute_pv_generation()/compute_cop()
+    -- per Default aus parameters.yaml gelesen, nicht mehr fest im Code hinterlegt.
     """
     weather = load_era5_weather(year, lat, lon, cache_dir, max_parallel=max_parallel)
     weather["COP_t"]   = compute_cop(weather["T_amb_C"], T_supply_C, eta_carnot)
@@ -343,6 +379,12 @@ if __name__ == "__main__":
                          default=pv_defaults.get("surface_azimuth", 180))
     parser.add_argument("--performance-ratio", type=float,
                          default=pv_defaults.get("performance_ratio", 0.85))
+    parser.add_argument("--supply-temp", type=float, default=None,
+                         help="Vorlauftemperatur [°C] für COP_t (default: net_parameters.supply_temperature "
+                              "aus parameters.yaml)")
+    parser.add_argument("--eta-carnot", type=float, default=None,
+                         help="Gütegrad rel. Carnot-Wirkungsgrad für COP_t (default: "
+                              "system_parameters.HP.eta_carnot aus parameters.yaml)")
     parser.add_argument("--cache-dir", type=str, default=CACHE_DIR,
                          help="Verzeichnis für den ERA5-NetCDF-Cache (default: %(default)s)")
     parser.add_argument("--parallel", type=int, default=6,
@@ -356,6 +398,7 @@ if __name__ == "__main__":
         year=args.year, lat=args.lat, lon=args.lon, cache_dir=args.cache_dir,
         surface_tilt=args.tilt, surface_azimuth=args.azimuth,
         pv_capacity_MW=args.pv_capacity_mw, performance_ratio=args.performance_ratio,
+        T_supply_C=args.supply_temp, eta_carnot=args.eta_carnot,
         max_parallel=args.parallel,
     )
 
