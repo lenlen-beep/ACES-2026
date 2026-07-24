@@ -18,13 +18,21 @@ import numpy as np
 import pandas as pd
 
 # Interaktives GUI-Backend vor dem pyplot-Import setzen (eigenes Fenster je Plot).
+# matplotlib.use() allein wirft nicht sofort einen Fehler, wenn das Backend nicht
+# verfuegbar ist (der Import passiert erst lazy bei der ersten Figure) - deshalb
+# wird hier jedes Backend mit einer Test-Figure geprueft, bevor es uebernommen wird.
 import matplotlib
-for _backend in ("Qt5Agg", "QtAgg", "TkAgg", "MacOSX"):
+for _backend in ("MacOSX", "TkAgg", "Qt5Agg", "QtAgg"):
     try:
         matplotlib.use(_backend, force=True)
+        import matplotlib.pyplot as _plt_probe
+        _fig = _plt_probe.figure()
+        _plt_probe.close(_fig)
         break
     except Exception:
         continue
+else:
+    matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -32,6 +40,18 @@ import matplotlib.dates as mdates
 # Cache-Datei (von step1_full_heat_demand.py geschrieben, gleicher Ordner)
 _HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE_FILE = os.path.join(_HERE, "step1_plot_cache.pkl")
+
+# Ordner zum automatischen Speichern der Plots (gleiche Konvention wie funcs/plots.py)
+_ACES_DIR = os.path.dirname(os.path.dirname(_HERE))  # .../src/ACES-2026
+PLOTS_DIR = os.path.join(_ACES_DIR, "plots")
+
+
+def _save(fig, filename):
+    """Speichert die Figure als PNG im gemeinsamen Plots-Ordner."""
+    os.makedirs(PLOTS_DIR, exist_ok=True)
+    path = os.path.join(PLOTS_DIR, filename)
+    fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="white")
+    print(f"Plot gespeichert: {path}")
 
 
 # --------------------------------------------------
@@ -250,6 +270,7 @@ def plot_stats_panel(meter_stats, show_plot=True):
     )
     ax.set_title("Share of Meters per Type of House", pad=18)
 
+    _save(fig, "step1_stats_panel.png")
     if show_plot:
         plt.show()
 
@@ -285,6 +306,7 @@ def plot_total_load(df_hourly, show_plot=True):
               [line_load.get_label(), line_nan.get_label()],
               loc="upper center", bbox_to_anchor=(0.5, 0.78), fontsize=9)
 
+    _save(fig, "step1_total_load.png")
     if show_plot:
         plt.show()
 
@@ -337,6 +359,7 @@ def plot_load_by_type(df_hourly, df_meta, show_plot=True):
     _pie_with_outside_small_pct(ax_pie, pie_vals, pie_labels, pie_cols, radius=0.85)
     ax_pie.set_title("Share of Annual Heat Demand", pad=26)
 
+    _save(fig, "step1_load_by_type.png")
     if show_plot:
         plt.show()
 
@@ -375,6 +398,87 @@ def plot_load_by_construction_year(df_hourly, df_meta, show_plot=True):
     ax.legend(handles, labels, fontsize=8, loc="upper center", ncol=3,
               title="Construction Year", framealpha=0.9)
 
+    _save(fig, "step1_load_by_construction_year.png")
+    if show_plot:
+        plt.show()
+
+
+# --------------------------------------------------
+# Plot 7: Gesamtlast – 7-Tage gleitender Mittelwert
+# --------------------------------------------------
+def plot_total_load_moving_average(df_hourly, show_plot=True):
+    """Gesamtwärmeleistung mit 7-Tage gleitendem Mittelwert.
+
+    Glättet Tages-/Wochenrauschen der Rohkurve und macht den saisonalen
+    Verlauf der Wärmelast über das Jahr deutlicher sichtbar.
+    """
+    total_heat = df_hourly.sum(axis=1, min_count=1)
+    ma_7d = total_heat.rolling(window=24 * 7, center=True, min_periods=24).mean()
+
+    fig, ax = plt.subplots(figsize=(16, 5), constrained_layout=True)
+    ax.plot(df_hourly.index, total_heat.values, color="gray", alpha=0.35,
+            linewidth=0.6, label="Hourly total heat load [kW]")
+    ax.plot(df_hourly.index, ma_7d.values, color="steelblue", linewidth=1.6,
+            label="7-day moving average [kW]")
+    ax.set_title("Total Heat Load – 7-Day Moving Average", fontweight="bold")
+    ax.set_xlabel("Month")
+    ax.set_ylabel("Heat Load [kW]")
+    ax.xaxis.set_major_locator(mdates.MonthLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
+    ax.grid(True)
+    ax.legend(fontsize=9, loc="upper right")
+
+    _save(fig, "step1_total_load_7day_ma.png")
+    if show_plot:
+        plt.show()
+
+
+# --------------------------------------------------
+# Plot 8: Mittleres Tagesprofil je Jahreszeit
+# --------------------------------------------------
+SEASON_MONTHS = {
+    "Winter": [12, 1, 2],
+    "Spring": [3, 4, 5],
+    "Summer": [6, 7, 8],
+    "Autumn": [9, 10, 11],
+}
+SEASON_COLORS = {
+    "Winter": "steelblue",
+    "Spring": "tab:green",
+    "Summer": "gold",
+    "Autumn": "darkorange",
+}
+
+
+def plot_diurnal_profiles_by_season(df_hourly, show_plot=True):
+    """Mittleres Tagesprofil (Stunde 0–23) je Jahreszeit.
+
+    Zeigt, wie sich die typische Tagesform der Wärmelast über das Jahr
+    verändert (z.B. ausgeprägte Morgen-/Abendspitzen im Winter vs. ein
+    flacheres Profil im Sommer) – eine Information, die im Jahresverlauf
+    (Plot 4) nicht sichtbar ist.
+    """
+    total_heat = df_hourly.sum(axis=1, min_count=1)
+    df_tmp = pd.DataFrame({
+        "value": total_heat.values,
+        "hour":  df_hourly.index.hour,
+        "month": df_hourly.index.month,
+    })
+
+    fig, ax = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    for season, months in SEASON_MONTHS.items():
+        sub = df_tmp[df_tmp["month"].isin(months)]
+        profile = sub.groupby("hour")["value"].mean()
+        ax.plot(profile.index, profile.values, color=SEASON_COLORS[season],
+                linewidth=1.8, marker="o", markersize=3, label=season)
+    ax.set_title("Average Diurnal Heat Load Profile by Season", fontweight="bold")
+    ax.set_xlabel("Hour of Day")
+    ax.set_ylabel("Average Heat Load [kW]")
+    ax.set_xticks(range(0, 24, 2))
+    ax.grid(True)
+    ax.legend(fontsize=9)
+
+    _save(fig, "step1_diurnal_profiles_by_season.png")
     if show_plot:
         plt.show()
 
@@ -409,6 +513,8 @@ def main():
     plot_total_load(df_hourly)
     plot_load_by_type(df_hourly, df_meta)
     plot_load_by_construction_year(df_hourly, df_meta)
+    plot_total_load_moving_average(df_hourly)
+    plot_diurnal_profiles_by_season(df_hourly)
 
 
 if __name__ == "__main__":

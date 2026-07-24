@@ -31,7 +31,8 @@ Korrekturen gegenüber Vorversion
 [8]  unit_type "unclear" wird entfernt + Warnung.
 [9]  Output enthält Jahresverbrauch (annual_kwh_2019) und unit_type je Meter.
 [10] Output sortiert nach Jahresverbrauch absteigend.
-[11] Alle 6 Step-1-Plots werden für die 267 ausgewählten Meter reproduziert.
+[11] Alle 8 Step-1-Plots (inkl. 7-Tage gleitendem Mittelwert und Tagesprofilen je
+     Jahreszeit) werden für die 267 ausgewählten Meter reproduziert.
 
 Outputs
 -------
@@ -49,9 +50,9 @@ import csv
 import numpy as np
 import pandas as pd
 
-# Plots in einem eigenen Fenster öffnen (nicht inline / nicht automatisch speichern).
-# Ein interaktives GUI-Backend wird vor dem pyplot-Import gesetzt; das erste
-# verfügbare Backend wird verwendet.
+# Plots in einem eigenen Fenster öffnen UND automatisch als PNG speichern (siehe
+# PLOTS_DIR/_save unten). Ein interaktives GUI-Backend wird vor dem pyplot-Import
+# gesetzt; das erste verfügbare Backend wird verwendet.
 import matplotlib
 # Try GUI backends; fall back to file-only Agg if none load successfully.
 # Note: matplotlib.use() may not raise immediately – the import happens lazily
@@ -124,6 +125,17 @@ OUT_META = os.path.join(DATA_DIR, "selected_267_profiles_meta.csv")
 # stündliche kW-Werte. Keine echte meter_id / unit_type / annual_kwh.
 OUT_WIDE = os.path.join(DATA_DIR, "selected_267_profiles_2019_wide.csv")
 
+# Ordner zum automatischen Speichern der Plots (gleiche Konvention wie funcs/plots.py)
+PLOTS_DIR = os.path.join(_ACES_DIR, "plots")
+
+
+def _save(fig, filename):
+    """Speichert die Figure als PNG im gemeinsamen Plots-Ordner."""
+    os.makedirs(PLOTS_DIR, exist_ok=True)
+    path = os.path.join(PLOTS_DIR, filename)
+    fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="white")
+    print(f"Plot gespeichert: {path}")
+
 # Plot-Style
 plt.rcParams.update({
     "figure.dpi": 110,
@@ -157,6 +169,20 @@ BAUJAHR_LABELS_EN = {
     "1995–2009": "1995–2009",
     "ab 2010":   "from 2010",
     "Unbekannt": "Unknown",
+}
+
+# Jahreszeiten (Monatszuordnung) und Farben für die Tagesprofil-Plots
+SEASON_MONTHS = {
+    "Winter": [12, 1, 2],
+    "Spring": [3, 4, 5],
+    "Summer": [6, 7, 8],
+    "Autumn": [9, 10, 11],
+}
+SEASON_COLORS = {
+    "Winter": "steelblue",
+    "Spring": "tab:green",
+    "Summer": "gold",
+    "Autumn": "darkorange",
 }
 
 # =============================================================================
@@ -494,6 +520,7 @@ def plot_stats_panel(meter_stats: pd.DataFrame, n_sample: int) -> None:
     # pad: zusätzlicher Abstand zwischen Pie-Titel und der außenliegenden Prozentzahl
     ax.set_title("Share of Meters per Type of House", pad=18)
 
+    _save(fig, "step2_stats_panel.png")
     plt.show()
 
 
@@ -503,7 +530,8 @@ def plot_series_panels(
     n_sample: int,
 ) -> None:
     """
-    Plots 4–6: Zeitreihen Gesamtlast, Stack unit_type, Stack Baujahr.
+    Plots 4–8: Zeitreihen Gesamtlast, Stack unit_type, Stack Baujahr,
+    7-Tage gleitender Mittelwert, Tagesprofile je Jahreszeit.
     Identisch zu Step 1, aber für die n_sample ausgewählten Meter.
     NaN-Behandlung: nansum mit roter NaN-Hilfslinie (zweite Y-Achse).
     """
@@ -556,6 +584,7 @@ def plot_series_panels(
     ax1.legend([line_load, line_nan],
                [line_load.get_label(), line_nan.get_label()],
                loc="upper center", bbox_to_anchor=(0.5, 0.78), fontsize=9)
+    _save(fig1, "step2_total_load.png")
     plt.show()
 
     # --- Plot 5: Stack unit_type + Pie Jahresenergie ---
@@ -596,6 +625,7 @@ def plot_series_panels(
     )
     # pad: Titel nach oben, damit über dem größeren Pie genug Abstand bleibt
     ax2b.set_title("Share of Annual Heat Demand", pad=26)
+    _save(fig2, "step2_load_by_type.png")
     plt.show()
 
     # --- Plot 6: Stack Baujahr-Klasse + NaN-Anteil ---
@@ -623,6 +653,45 @@ def plot_series_panels(
     # damit sie die Stack-Flächen (Winterspitzen links/rechts) nicht verdeckt.
     ax3.legend(handles, labels, fontsize=8, loc="upper center", ncol=3,
                title="Construction Year", framealpha=0.9)
+    _save(fig3, "step2_load_by_construction_year.png")
+    plt.show()
+
+    # --- Plot 7: Gesamtlast – 7-Tage gleitender Mittelwert ---
+    ma_7d = total_heat.rolling(window=24 * 7, center=True, min_periods=24).mean()
+    fig4, ax4 = plt.subplots(figsize=(16, 5), constrained_layout=True)
+    ax4.plot(df_hourly.index, total_heat.values, color="gray", alpha=0.35,
+             linewidth=0.6, label="Hourly total heat load [kW]")
+    ax4.plot(df_hourly.index, ma_7d.values, color="#1f77b4", linewidth=1.6,
+             label="7-day moving average [kW]")
+    ax4.set_title("Total Heat Load of Reduced Profile – 7-Day Moving Average",
+                  fontweight="bold")
+    ax4.set_xlabel("Month")
+    ax4.set_ylabel("Heat Load [kW]")
+    ax4.xaxis.set_major_locator(mdates.MonthLocator())
+    ax4.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
+    ax4.legend(fontsize=9, loc="upper right")
+    _save(fig4, "step2_total_load_7day_ma.png")
+    plt.show()
+
+    # --- Plot 8: Mittleres Tagesprofil je Jahreszeit ---
+    df_tmp = pd.DataFrame({
+        "value": total_heat.values,
+        "hour":  df_hourly.index.hour,
+        "month": df_hourly.index.month,
+    })
+    fig5, ax5 = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    for season, months in SEASON_MONTHS.items():
+        sub = df_tmp[df_tmp["month"].isin(months)]
+        profile = sub.groupby("hour")["value"].mean()
+        ax5.plot(profile.index, profile.values, color=SEASON_COLORS[season],
+                 linewidth=1.8, marker="o", markersize=3, label=season)
+    ax5.set_title("Average Diurnal Heat Load Profile by Season (Reduced Profile)",
+                  fontweight="bold")
+    ax5.set_xlabel("Hour of Day")
+    ax5.set_ylabel("Average Heat Load [kW]")
+    ax5.set_xticks(range(0, 24, 2))
+    ax5.legend(fontsize=9)
+    _save(fig5, "step2_diurnal_profiles_by_season.png")
     plt.show()
 
 
