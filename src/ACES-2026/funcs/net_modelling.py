@@ -95,18 +95,18 @@ def build_graph(gdf, length_col="Length"):
         else:
             continue 
 
-        load = data.get("Connection Load")
+        load = data.get("Connection_Load (dummy)")
         if load is not None and not np.isnan(float(load)) and load > 0:
-            G.nodes[end_node]["Connection Load"] = load
+            G.nodes[end_node]["Connection_Load (dummy)"] = load
 
         # Heating Unit (Hz) auf Endknoten übertragen
-        if data.get("Heating Unit"):
-            G.nodes[end_node]["Heating Unit"] = True
+        if data.get("Heating_unit"):
+            G.nodes[end_node]["Heating_unit"] = True
 
     return G
 
 
-def test_connectivity(G, snap_tolerance=0.5):
+def test_connectivity(G, snap_tolerance=0.5, export_path=None):
     """
     Prüft, ob der Graph topologisch verbunden ist und ob es geometrische
     Lücken zwischen nahe beieinanderliegenden Knoten gibt.
@@ -116,6 +116,8 @@ def test_connectivity(G, snap_tolerance=0.5):
     G              : nx.Graph
     snap_tolerance : maximaler Abstand [m] unter dem zwei unverbundene
                      Knoten als Lücke gemeldet werden (Default: 0.5 m)
+    export_path    : Pfad zur GeoPackage-Ausgabedatei — wird nur erzeugt,
+                     wenn der Graph nicht verbunden ist (z.B. "Data/komponenten.gpkg")
     """
     print("=== Connectivity-Test ===")
 
@@ -128,6 +130,23 @@ def test_connectivity(G, snap_tolerance=0.5):
         print(f"  ✗ Graph ist NICHT verbunden — {len(components)} Komponenten:")
         for i, comp in enumerate(components):
             print(f"      [{i+1}] {len(comp)} Knoten")
+
+        if export_path is not None:
+            rows = []
+            for comp_idx, comp_nodes in enumerate(components, start=1):
+                subG = G.subgraph(comp_nodes)
+                for u, v, data in subG.edges(data=True):
+                    geom = data.get("geometry")
+                    if geom is not None:
+                        rows.append({"Komponente": comp_idx,
+                                     "Knoten":     len(comp_nodes),
+                                     "geometry":   geom})
+            if rows:
+                gdf_comp = gpd.GeoDataFrame(rows, geometry="geometry", crs=TARGET_CRS)
+                gdf_comp.to_file(export_path, driver="GPKG", layer="Komponenten")
+                print(f"  → GeoPackage gespeichert: {export_path}")
+            else:
+                print("  → Keine Geometrien vorhanden, GeoPackage nicht erzeugt.")
 
     # 2. Geometrische Lücken: Knoten die nah beieinander liegen, aber nicht verbunden sind
     nodes = list(G.nodes)
@@ -188,7 +207,7 @@ def create_pandapipes_network(G, pn_bar=6.0):
         node_to_jidx_RL[coord] = jidx_RL
 
         # Hausübergabestation: Heat Exchanger + Flow Control
-        connection_load = data.get("Connection Load")
+        connection_load = data.get("Connection_Load (dummy)")
         if connection_load is not None:
             qext_w = float(connection_load) * 1000.0  # kW → W
             mdot_kg_per_s = qext_w / (cp_j_per_kgk * dt_k)
@@ -211,7 +230,7 @@ def create_pandapipes_network(G, pn_bar=6.0):
             )
 
         # Wärmeerzeuger-/Übergabestation: Umlaufpumpe von RL nach VL
-        if data.get("Heating Unit") and not data.get('Connection Load'):
+        if data.get("Heating_unit") and not data.get("Connection_Load (dummy)"):
             pandapipes.create_circ_pump_const_pressure(
                 net,
                 return_junction=jidx_RL,
@@ -227,8 +246,8 @@ def create_pandapipes_network(G, pn_bar=6.0):
 
     for u, v, data in G.edges(data=True):
         length_km = data.get("Length", 0.0) / 1000.0
-        diameter_m = data.get('diameter', 0.0223)
-        u_value = data.get('u_value', 0.119)
+        diameter_m = data.get('Diameter_mm', 22.3) / 1000.0  # mm → m
+        u_value = data.get('U-value_W/Km', 0.119)
         geom = data.get("geometry")
 
         alpha = u_value / (np.pi * diameter_m)
@@ -276,7 +295,8 @@ def run_timeseries(net, buildings_df, building_cols=None):
 
     Rückgabe
     --------
-    DataFrame mit Spalten 'Datum' und 'mdot_kg_per_s' (Pumpenmassenstrom)
+    DataFrame mit Spalten 'Datum', 'mdot_kg_per_s' (Pumpenmassenstrom),
+    't_return_k' und 't_supply_k'
     """
     import pandas as pd
 
@@ -306,13 +326,24 @@ def run_timeseries(net, buildings_df, building_cols=None):
 
         try:
             pandapipes.pipeflow(net)
-            pump_mdot = float(net.res_circ_pump_pressure['mdot_from_kg_per_s'].sum())
+            pump_row  = net.res_circ_pump_pressure.iloc[0]
+            pump_mdot = abs(float(net.res_circ_pump_pressure['mdot_from_kg_per_s'].sum()))
+            # t_from_k = Rücklauftemperatur (Ansaugseite), t_to_k = Vorlauftemperatur (Druckseite)
+            t_return_k = float(pump_row['t_from_k'])
+            t_supply_k = float(pump_row['t_to_k'])
         except Exception as e:
             if i == 0:
                 print(f"  pipeflow Fehler (Zeitschritt 0): {e}")
-            pump_mdot = float('nan')
+            pump_mdot  = float('nan')
+            t_return_k = float('nan')
+            t_supply_k = float('nan')
 
-        records.append({'Datum': row['Datum'], 'mdot_kg_per_s': pump_mdot})
+        records.append({
+            'Datum':         row['Datum'],
+            'mdot_kg_per_s': pump_mdot,
+            't_return_k':    t_return_k,
+            't_supply_k':    t_supply_k,
+        })
 
         if (i + 1) % 500 == 0 or (i + 1) == n:
             print(f"  {i + 1}/{n} Zeitschritte simuliert …")

@@ -4,6 +4,7 @@ from funcs.plots import plot_temperatures, plot_prices, plot_gas_prices, \
                         plot_network_losses, plot_energy_system_daily_stacked, \
                         plot_buffer_daily, plot_seasonal_daily, plot_pv_daily
 from funcs.read_data import read_price_data, read_gas_price_data, read_pv_data, load_temperature_data
+from funcs.era5_weather import load_era5_weather, compute_pv_generation, LAT as ERA5_LAT, LON as ERA5_LON
 from funcs.energy_system_optimization import optimize_energy_system
 from funcs.net_modelling import load_network_gpkg, build_graph, test_connectivity, create_pandapipes_network, \
                                 export_res_pipe_gpkg, run_timeseries
@@ -56,6 +57,15 @@ print(f"Gebäude nach Trassierung: {len(in_trasse)} behalten "
 
 # Zeitreihensimulation Netz
 result_df = run_timeseries(net, buildings_df)
+
+# Einzelne nicht konvergierte Zeitschritte (siehe pandapipes-Warnungen) linear interpolieren,
+# damit kein NaN in die Optimierung durchschlägt (Python-sum() überspringt NaN nicht wie pandas)
+nan_cols = ['mdot_kg_per_s', 't_supply_k', 't_return_k']
+n_nan = result_df[nan_cols].isna().any(axis=1).sum()
+if n_nan:
+    print(f"Hinweis: {n_nan} nicht konvergierte Zeitschritte werden linear interpoliert.")
+    result_df[nan_cols] = result_df[nan_cols].interpolate(limit_direction='both')
+
 result_df.to_csv("src/ACES-2026/Data/result_timeseries.csv", index=False)
 # print(f'Ergebnis-Dataframe (Netzsimulation): {result_df}')
 
@@ -140,29 +150,49 @@ gas_price = read_gas_price_data(
 
 
 # --------------------------------------------------
-# Laden der PV-Daten
+# Laden der PV-Daten (ERA5 + eigenes PV-Modell, Standort Jerrishoe, statt renewables.ninja)
 # --------------------------------------------------
+# ERA5 läuft nativ auf dem 2019-Kalender (wie `load`), daher direkt auf load.index
+# ausrichten -- keine Schalttag-/Wochentag-Anpassung nötig (das war nur für die auf
+# den 2024er-Kalender datierten renewables.ninja-Daten erforderlich, siehe unten).
 
-pv = read_pv_data(
-    path="src/ACES-2026/Data/",
-    filename="ninja_pv_54.7833_9.4333_corrected.csv",
-    load_data=ref_2024
+weather_era5 = load_era5_weather(2019, lat=ERA5_LAT, lon=ERA5_LON)
+# pv_capacity_MW=1.0 -> normiertes Kapazitätsfaktor-Profil (MW Ertrag pro MW installiert),
+# NICHT auf initial_pv_capacity skalieren: das Optimierungsmodell multipliziert pv[t]
+# selbst mit der von ihm dimensionierten m.pv_capacity-Variable (energy_system_optimization.py:310).
+pv_era5 = compute_pv_generation(
+    weather_era5, lat=ERA5_LAT, lon=ERA5_LON,
+    surface_tilt=parameters['system_parameters']['PV']['surface_tilt'],
+    surface_azimuth=parameters['system_parameters']['PV']['surface_azimuth'],
+    pv_capacity_MW=1.0,
 )
+# load.index kommt aus der 'Datum'-Spalte der Gebäude-CSV (String, kein DatetimeIndex) ->
+# für die zeitbasierte Ausrichtung/Interpolation separat in datetime konvertieren, ohne
+# den Index von `load` selbst zu verändern (wird andernorts als String erwartet).
+load_index_dt = pd.to_datetime(load.index)
+pv = pv_era5.reindex(load_index_dt).interpolate(method='time').bfill().ffill().values
+
+# --- Backup / alte Quelle (renewables.ninja), bei Bedarf reaktivierbar: ---
+# pv = read_pv_data(
+#     path="src/ACES-2026/Data/",
+#     filename="ninja_pv_54.7833_9.4333_corrected.csv",
+#     load_data=ref_2024
+# )
+# pv = pv[feb29]   # siehe Feb29-Filter unten
 
 
 # --------------------------------------------------
-# Schalttag entfernen + Wochenprofil synchronisieren
+# Schalttag entfernen + Wochenprofil synchronisieren (Strompreise/Gaspreise)
 # --------------------------------------------------
-# Strom-/Gaspreise und PV liegen auf 2024-Achse (8784 h, startet Mo).
+# Strom-/Gaspreise liegen auf 2024-Achse (8784 h, startet Mo).
 # Load ist 2019-Netzberechnung (8760 h, startet Di).
-#   1. Feb 29 aus allen drei entfernen → 8760 h
-#   2. Strompreise um 24 h rotieren: Mo → Di = passt zu 2019-Wochenprofil
+#   1. Feb 29 entfernen → 8760 h
+#   2. Um 24 h rotieren: Mo → Di = passt zu 2019-Wochenprofil
 
 feb29 = ~((ref_2024.index.month == 2) & (ref_2024.index.day == 29))
 
 electricity_price = electricity_price[feb29]
 gas_price         = gas_price[feb29]
-pv                = pv[feb29]
 
 # Ersten Tag (Mo, 1.1.2024, 24 h) ans Ende → beide Preisreihen starten Di (= 2019)
 electricity_price = np.concatenate([electricity_price[24:], electricity_price[:24]])
@@ -284,9 +314,7 @@ plot_pv_daily(result_pv, result_pv_feed_in, result_pv_capacity, show_plot=True)
 # --------------------------------------------------
 # LCOH berechnen und plotten
 # --------------------------------------------------
-import sys, os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from LCOH import calculate_lcoh, plot_lcoh_pie
+from funcs.LCOH import calculate_lcoh, plot_lcoh_pie
 
 network_length = gdf["Length_m"].sum()   # [m]
 

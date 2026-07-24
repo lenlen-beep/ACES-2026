@@ -49,8 +49,8 @@ import matplotlib.pyplot as plt
 # Arbeitsverzeichnis auf das Repo-Root setzen, damit die im Projekt hartcodierten
 # relativen Pfade ("src/ACES-2026/parameters.yaml") in funcs.* und hier auch dann
 # funktionieren, wenn das Skript direkt (z. B. via Spyder %runfile --wdir) aus dem
-# Skript-Ordner gestartet wird. LCOH.py liegt in <repo>/src/ACES-2026/.
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Skript-Ordner gestartet wird. LCOH.py liegt in <repo>/src/ACES-2026/funcs/.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 os.chdir(_REPO_ROOT)
 
 from funcs.read_data import read_parameters

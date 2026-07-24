@@ -80,4 +80,4 @@ dependencies = [
 dev = []
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src/ACES-2026"]
