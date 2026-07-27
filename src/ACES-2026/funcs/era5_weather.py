@@ -6,9 +6,9 @@ Wetter- und PV-Daten für ein Jahr (Standard: Jerrishoe, 2019):
 
     python -m funcs.era5_weather --year 2019
 
-Dies ist (noch) nicht in main.py eingebunden — main.py nutzt weiterhin meteostat
-(load_temperature_data) und renewables.ninja (read_pv_data) wie bisher. Die Einbindung
-dieses Moduls ins Hauptskript ist ein späterer, separater Schritt.
+main.py nutzt dieses Modul bereits für PV-Ertrag (statt renewables.ninja) und für den
+temperaturabhängigen COP (statt statischem COP aus parameters.yaml). load_temperature_data
+(meteostat) wird daneben nur noch fürs Plotten geladen, nicht mehr als Modell-Input.
 
 Setup (einmalig):
     1. Account: https://cds.climate.copernicus.eu (kostenlos)

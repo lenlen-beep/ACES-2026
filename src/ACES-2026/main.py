@@ -4,7 +4,7 @@ from funcs.plots import plot_temperatures, plot_prices, plot_gas_prices, \
                         plot_network_losses, plot_energy_system_daily_stacked, \
                         plot_buffer_daily, plot_seasonal_daily, plot_pv_daily
 from funcs.read_data import read_price_data, read_gas_price_data, read_pv_data, load_temperature_data
-from funcs.era5_weather import load_era5_weather, compute_pv_generation, LAT as ERA5_LAT, LON as ERA5_LON
+from funcs.era5_weather import load_era5_weather, compute_pv_generation, compute_cop, LAT as ERA5_LAT, LON as ERA5_LON
 from funcs.energy_system_optimization import optimize_energy_system
 from funcs.net_modelling import load_network_gpkg, build_graph, test_connectivity, create_pandapipes_network, \
                                 export_res_pipe_gpkg, run_timeseries
@@ -182,6 +182,21 @@ pv = pv_era5.reindex(load_index_dt).interpolate(method='time').bfill().ffill().v
 
 
 # --------------------------------------------------
+# Temperaturabhängiger COP der Wärmepumpe (ERA5 T_amb_C + Carnot-Ansatz,
+# statt statischem COP aus parameters.yaml)
+# --------------------------------------------------
+# Gleiche Ausrichtung wie bei pv_era5: ERA5 läuft nativ auf 2019, daher direkt
+# auf load_index_dt reindizieren.
+
+cop_era5 = compute_cop(weather_era5["T_amb_C"])
+cop = cop_era5.reindex(load_index_dt).interpolate(method='time').bfill().ffill().values
+
+# --- Backup / alter statischer COP, bei Bedarf reaktivierbar: ---
+# cop = None   # optimize_energy_system()/calculate_lcoh() fallen dann auf den
+#              # statischen COP aus parameters.yaml (system_parameters.HP.COP) zurück
+
+
+# --------------------------------------------------
 # Schalttag entfernen + Wochenprofil synchronisieren (Strompreise/Gaspreise)
 # --------------------------------------------------
 # Strom-/Gaspreise liegen auf 2024-Achse (8784 h, startet Mo).
@@ -209,6 +224,7 @@ results, result_df_heatpump, result_df_gas_boiler, result_df_charge, result_df_d
     result_seasonal_soc, result_seasonal_capacity \
     = optimize_energy_system(
         load, electricity_price, gas_price, pv,
+        cop=cop,
         elec_price_mode="spot",       # "spot" | "tariff" | "hedge"
         elec_hedge_share=0.0,         # Anteil Festpreis bei mode="hedge" (0–1)
         gas_price_mode="tariff",        # "spot" | "tariff"
@@ -326,6 +342,7 @@ lcoh, components = calculate_lcoh(
     pv_capacity=result_pv_capacity, seasonal_capacity_m3=result_seasonal_capacity,
     network_length=network_length,
     hp_capacity=result_hp_capacity,   # direkt aus Optimierer, kein Rekonstruieren
+    cop=cop,                          # gleicher COP-Verlauf wie in der Optimierung
     elec_price_mode="spot",           # gleicher Modus wie in der Optimierung
     gas_price_mode="tariff",          # gleicher Modus wie in der Optimierung
 )

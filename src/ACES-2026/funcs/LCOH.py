@@ -96,6 +96,7 @@ def calculate_lcoh(
     network_length,
     hp_capacity=None,
     P_grid=None,
+    cop=None,
     elec_price_mode: str = "spot",
     elec_hedge_share: float = 0.0,
     gas_price_mode: str = "spot",
@@ -113,6 +114,10 @@ def calculate_lcoh(
                   minimiert und nur durch Q_hp <= cap und charge <= cap begrenzt ist).
     P_grid      : optional. Wird bei None aus der Strombilanz rekonstruiert
                   (P_grid = Q_hp/COP + pv_feed_in − pv_availability).
+    cop         : optional, array-like (gleiche Länge wie demand) – MUSS derselbe
+                  COP-Verlauf sein, mit dem optimiert wurde (sonst passt P_el_hp
+                  nicht zum Dispatch). Bei None wird der statische COP aus
+                  parameters.yaml verwendet (bisheriges Verhalten).
 
     Rückgabe:
         lcoh_total : float, €/MWh
@@ -150,7 +155,8 @@ def calculate_lcoh(
         hp_capacity = max(float(np.max(Q_hp)) if Q_hp.size else 0.0,
                           float(np.max(charge)) if charge.size else 0.0)
 
-    P_el_hp = Q_hp / COP
+    cop_arr = np.full(n_t, COP) if cop is None else _to_array(cop)
+    P_el_hp = Q_hp / cop_arr
     if P_grid is None:
         # Strombilanz: P_grid + pv_avail = P_el_hp + pv_feed_in
         P_grid = P_el_hp + pv_feed_in - pv_availability

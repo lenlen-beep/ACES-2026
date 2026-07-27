@@ -452,19 +452,17 @@ def _pie_with_outside_small_pct(ax: plt.Axes, values, labels, colors,
     return wedges
 
 
-def plot_stats_panel(meter_stats: pd.DataFrame, n_sample: int) -> None:
+def plot_annual_consumption_stats(meter_stats: pd.DataFrame, n_sample: int) -> None:
     """
-    Plots 1–3: Histogramm, Scatter, Pie (Meter-Anzahl je Haustyp).
+    Plots 1–2: Histogramm, Scatter (Jahresverbrauch / Spitzenlast je Haustyp).
     Identisch zu Step 1, aber für die n_sample ausgewählten Meter.
     """
     unit_types_sorted = sorted(meter_stats["unit_type"].fillna("unbekannt").unique().tolist())
     palette    = ["#4CAF50", "#2196F3", "#FF9800", "#9C27B0", "#E91E63", "#00BCD4", "#607D8B"]
     type_color = {t: palette[i % len(palette)] for i, t in enumerate(unit_types_sorted)}
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-    # Manuelles Layout: größerer Abstand zwischen den Diagrammen (wspace) und
-    # größerer Abstand zwischen Hauptüberschrift (y) und Diagramm-Überschriften (top).
-    fig.subplots_adjust(left=0.055, right=0.965, top=0.80, bottom=0.12, wspace=0.34)
+    fig, axes = plt.subplots(1, 2, figsize=(13, 6))
+    fig.subplots_adjust(left=0.07, right=0.965, top=0.82, bottom=0.12, wspace=0.28)
     fig.suptitle("Reduced Heat Demand Data for 2019 per type of house",
                  fontsize=14, fontweight="bold", y=0.96)
 
@@ -503,8 +501,21 @@ def plot_stats_panel(meter_stats: pd.DataFrame, n_sample: int) -> None:
     ax.set_title("Annual Heat Demand vs. Peak Load")
     ax.legend(fontsize=8)
 
-    # Plot 3: Pie – Anzahl Meter je Haustyp (kleine Prozentwerte außerhalb)
-    ax = axes[2]
+    _save(fig, "step2_annual_consumption_stats.png")
+    plt.show()
+
+
+def plot_meter_type_pie(meter_stats: pd.DataFrame, n_sample: int) -> None:
+    """
+    Plot 3: Pie – Anzahl Meter je Haustyp (kleine Prozentwerte außerhalb).
+    Eigenständige Abbildung (getrennt von Histogramm/Scatter), damit sie einzeln
+    (z.B. im Bericht, neben dem Step-1-Pendant) verwendet werden kann.
+    """
+    unit_types_sorted = sorted(meter_stats["unit_type"].fillna("unbekannt").unique().tolist())
+    palette    = ["#4CAF50", "#2196F3", "#FF9800", "#9C27B0", "#E91E63", "#00BCD4", "#607D8B"]
+    type_color = {t: palette[i % len(palette)] for i, t in enumerate(unit_types_sorted)}
+
+    fig, ax = plt.subplots(figsize=(7, 7))
     counts = (
         meter_stats["unit_type"].fillna("unbekannt")
         .value_counts().reindex(unit_types_sorted).fillna(0).astype(int)
@@ -518,9 +529,9 @@ def plot_stats_panel(meter_stats: pd.DataFrame, n_sample: int) -> None:
         group_small_labels=True,     # "Apartment" + Prozentzahl gruppiert nach außen
     )
     # pad: zusätzlicher Abstand zwischen Pie-Titel und der außenliegenden Prozentzahl
-    ax.set_title("Share of Meters per Type of House", pad=18)
+    ax.set_title("Share of Meters per Type of House", fontweight="bold", pad=18)
 
-    _save(fig, "step2_stats_panel.png")
+    _save(fig, "step2_meter_type_pie.png")
     plt.show()
 
 
@@ -1001,7 +1012,8 @@ def main():
 
     # --- Plots für die 267 Meter [11] ---
     print("\nErstelle Plots für die 267 ausgewählten Meter ...")
-    plot_stats_panel(meta_sample, len(chosen_in_hourly))
+    plot_annual_consumption_stats(meta_sample, len(chosen_in_hourly))
+    plot_meter_type_pie(meta_sample, len(chosen_in_hourly))
     plot_series_panels(df_sel, meta_sample, len(chosen_in_hourly))
 
 

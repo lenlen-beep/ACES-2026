@@ -106,6 +106,7 @@ def optimize_energy_system(
     electricity_price,
     gas_price,
     pv,
+    cop=None,
     elec_price_mode: str = "spot",
     elec_hedge_share: float = 0.0,
     gas_price_mode: str = "spot",
@@ -117,9 +118,18 @@ def optimize_energy_system(
     elec_hedge_share : Anteil Festpreis bei mode="hedge", z.B. 0.3 = 30 % Tarif, 70 % Spot
     gas_price_mode   : "spot"   – Spotpreisreihe (gas_price)
                        "tariff" – Festpreis aus parameters.yaml (price_parameters.gas.tarif.usual_mid)
+    cop              : optional, array-like (gleiche Länge wie demand) – zeitabhängiger
+                        COP der Wärmepumpe, z.B. COP_t aus era5_weather.compute_cop().
+                        Bei None (Default) wird der statische COP aus parameters.yaml
+                        (system_parameters.HP.COP) verwendet (bisheriges Verhalten).
     """
     demand = demand.values
     T = range(len(demand))
+
+    if cop is None:
+        cop_t = np.full(len(T), COP)
+    else:
+        cop_t = np.asarray(getattr(cop, "values", cop), dtype=float)
 
     # Strompreis aufbereiten (Einheit: €/MWh)
     elec_tariff_eur_per_mwh = parameters["price_parameters"]["electricity"]["tarif"]["usual_mid"] * 10  # ct/kWh → €/MWh
@@ -211,9 +221,9 @@ def optimize_energy_system(
 
     model.heat_balance = pyo.Constraint(model.T, rule=heat_balance)
 
-    # COP der Wärmepumpe
+    # COP der Wärmepumpe (statisch oder zeitabhängig, siehe cop-Parameter oben)
     def cop_rule(m, t):
-        return m.Q_hp[t] == COP * m.P_el_hp[t]
+        return m.Q_hp[t] == cop_t[t] * m.P_el_hp[t]
 
     model.cop_constraint = pyo.Constraint(model.T, rule=cop_rule)
 

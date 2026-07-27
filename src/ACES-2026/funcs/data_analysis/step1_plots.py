@@ -207,16 +207,15 @@ def _pie_with_outside_small_pct(ax, values, labels, colors,
 
 
 # --------------------------------------------------
-# Plot 1–3: Kennwerte je Haustyp (Histogramm, Scatter, Pie)
+# Plot 1–2: Kennwerte je Haustyp (Histogramm, Scatter)
 # --------------------------------------------------
-def plot_stats_panel(meter_stats, show_plot=True):
-    """Panel mit Histogramm (Jahresverbrauch), Scatter (Verbrauch vs. Spitzenlast)
-    und Pie (Anzahl Meter je Haustyp)."""
+def plot_annual_consumption_stats(meter_stats, show_plot=True):
+    """Panel mit Histogramm (Jahresverbrauch) und Scatter (Verbrauch vs. Spitzenlast)."""
     unit_types_sorted = sorted(meter_stats["unit_type"].fillna("unbekannt").unique().tolist())
     type_color = type_colors(unit_types_sorted)
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-    fig.subplots_adjust(left=0.055, right=0.965, top=0.80, bottom=0.12, wspace=0.34)
+    fig, axes = plt.subplots(1, 2, figsize=(13, 6))
+    fig.subplots_adjust(left=0.07, right=0.965, top=0.82, bottom=0.12, wspace=0.28)
     fig.suptitle("Full Heat Demand Data for 2019 per Type of House",
                  fontsize=14, fontweight="bold", y=0.96)
 
@@ -255,8 +254,22 @@ def plot_stats_panel(meter_stats, show_plot=True):
     ax.grid(True)
     ax.legend(fontsize=8)
 
-    # Plot 3: Pie – Anzahl Meter je Haustyp
-    ax = axes[2]
+    _save(fig, "step1_annual_consumption_stats.png")
+    if show_plot:
+        plt.show()
+
+
+# --------------------------------------------------
+# Plot 3: Pie – Anzahl Meter je Haustyp (eigenständig)
+# --------------------------------------------------
+def plot_meter_type_pie(meter_stats, show_plot=True):
+    """Eigenständiges Kreisdiagramm: Anzahl Meter je Haustyp (Haustyp-Struktur des
+    Datensatzes). Separat von Histogramm/Scatter, damit es einzeln (z.B. im
+    Bericht) verwendet werden kann."""
+    unit_types_sorted = sorted(meter_stats["unit_type"].fillna("unbekannt").unique().tolist())
+    type_color = type_colors(unit_types_sorted)
+
+    fig, ax = plt.subplots(figsize=(7, 7))
     counts = (
         meter_stats["unit_type"].fillna("unbekannt")
         .value_counts().reindex(unit_types_sorted).fillna(0).astype(int)
@@ -268,9 +281,9 @@ def plot_stats_panel(meter_stats, show_plot=True):
         [type_color[t] for t in counts.index],
         radius=0.72,
     )
-    ax.set_title("Share of Meters per Type of House", pad=18)
+    ax.set_title("Share of Meters per Type of House", fontweight="bold", pad=18)
 
-    _save(fig, "step1_stats_panel.png")
+    _save(fig, "step1_meter_type_pie.png")
     if show_plot:
         plt.show()
 
@@ -509,7 +522,8 @@ def main():
     print(f"Geladen aus Cache: {df_hourly.shape[1]} Meter, {df_hourly.shape[0]} Stunden. "
           "Erzeuge Plots ...")
 
-    plot_stats_panel(meter_stats)
+    plot_annual_consumption_stats(meter_stats)
+    plot_meter_type_pie(meter_stats)
     plot_total_load(df_hourly)
     plot_load_by_type(df_hourly, df_meta)
     plot_load_by_construction_year(df_hourly, df_meta)
