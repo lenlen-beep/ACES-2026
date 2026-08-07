@@ -51,7 +51,6 @@ import matplotlib.pyplot as plt
 # relativen Pfade ("src/ACES-2026/parameters.yaml") in funcs.* und hier auch dann
 # funktionieren, wenn das Skript direkt (z. B. via Spyder %runfile --wdir) aus dem
 # Skript-Ordner gestartet wird. LCOH.py liegt in <repo>/src/ACES-2026/funcs/.
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from funcs.read_data import read_parameters
 from funcs.energy_system_optimization import (
@@ -60,6 +59,7 @@ from funcs.energy_system_optimization import (
     COP,
     eta_gas_boiler,
     feed_in_tariff,
+    elec_volumetric_surcharge,
     hp_invest_offset, hp_specific_cost,
     storage_invest_offset, storage_specific_cost,
     gas_invest_offset, gas_specific_cost,
@@ -136,6 +136,9 @@ def calculate_lcoh(
     pv_feed_in        = _to_array(pv_feed_in)
 
     n_t = len(demand)
+
+     # Spotreihe -> Endkundenpreis, identisch zur Optimierung
+    electricity_price = electricity_price + elec_volumetric_surcharge(parameters)
 
     # --- Preisreihen aufbereiten (identisch zur Optimierung) -----------------
     elec_tariff = parameters["price_parameters"]["electricity"]["tarif"]["usual_mid"] * 10  # ct/kWh → €/MWh
@@ -223,9 +226,7 @@ def calculate_lcoh(
         "Gas-Brennstoff (OPEX)":    opex_gas,
         "O&M (1,5 % CAPEX)":        opex_om,
         "PV-Einspeiseerlös":        -revenue_pv,   # negativ (Gutschrift)
-        "Strombezug WP (OPEX)":     opex_elec,
         "Netzentgelt Leistungspreis": opex_grid_capacity,
-        "Pumpstrom (OPEX)":         opex_pump,
     }
 
     components = {}
