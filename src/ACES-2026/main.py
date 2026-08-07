@@ -1,3 +1,4 @@
+from funcs.paths import PARAMETERS_FILE
 from funcs.plots import plot_temperatures, plot_prices, plot_gas_prices, \
                         plot_charge_discharge_process, plot_energy_system_output_sorted, \
                         plot_load_w_components, plot_SOC, plot_pv, plot_seasonal_storage, \
@@ -16,7 +17,7 @@ import numpy as np
 
 
 from funcs.read_data import read_parameters
-parameters = read_parameters("src/ACES-2026/parameters.yaml")
+parameters = read_parameters(PARAMETERS_FILE)
 
 
 # -------------------------------------------------

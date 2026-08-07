@@ -1,3 +1,4 @@
+from funcs.paths import PARAMETERS_FILE
 import geopandas as gpd
 import networkx as nx
 import numpy as np
@@ -6,10 +7,11 @@ from shapely import set_precision
 from shapely.geometry import LineString
 
 try:
-    from read_data import read_parameters
+    from funcs.read_data import read_parameters
 except ImportError:
     from funcs.read_data import read_parameters
-parameters = read_parameters("src/ACES-2026/parameters.yaml")
+
+parameters = read_parameters(PARAMETERS_FILE)
 
 # TODO: Bodentemperatur variabel?
 

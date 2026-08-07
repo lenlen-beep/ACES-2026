@@ -43,6 +43,7 @@ Verwendung (z. B. in main.py nach der Optimierung):
 
 import os
 
+from funcs.paths import PARAMETERS_FILE
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -67,7 +68,7 @@ from funcs.energy_system_optimization import (
     seasonal_invest_offset, seasonal_specific_cost,
 )
 
-parameters = read_parameters("src/ACES-2026/parameters.yaml")
+parameters = read_parameters(PARAMETERS_FILE)
 
 # Netz-/Rohrparameter (CAPEX über Netzlänge) – einziger Posten, der in der
 # Optimierung bisher nicht enthalten ist.

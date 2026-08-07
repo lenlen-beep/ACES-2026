@@ -59,20 +59,20 @@ invest_parameters:
   lifetime_years: 20              # a
   interest_rate: 0.05
 
-price_parameters:                 # SH-Netz 2025
+price_parameters:                 # SH-Netz 2024
 
   electricity:
     tarif:                        # ct/kWh all-in
       usual_mid: 16.77
       pre_stress: 21.77
       stress: 35.7
-    network_charge:
+    network_charge:               # SH Netz 2024, Mittelspannung, Preisblatt LG JLP
       lower_2500VBH:
-        capacity_charge: 25.0     # Euro/kW*a
-        commodity_charge: 4.97    # ct/kWh
+        capacity_charge: 44.70    # Euro/kW*a
+        commodity_charge: 8.63    # ct/kWh
       higher_2500VBH:
-        capacity_charge: 115.61   # Euro/kW*a
-        commodity_charge: 1.38    # ct/kWh
+        capacity_charge: 200.65   # Euro/kW*a
+        commodity_charge: 2.39    # ct/kWh
     tax: 2.05                     # ct/kWh
     levies:                       # netzentgeltbasierte Umlagen 2024 (ÜNB, netztransparenz.de)
       kwkg: 0.275                 # ct/kWh, KWKG-Umlage
