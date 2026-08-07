@@ -34,7 +34,7 @@ Methodik:
 - Kostenminimierung der Wärmepumpe und Speicherinvestition
 """
 
-parameters = read_parameters("src/ACES-2026/parameters.yaml")
+parameters = read_parameters(PARAMETERS_FILE)
 
 #Netzparameter
 cp_w = parameters["net_parameters"]["specific_heat_capacity"]
