@@ -2,7 +2,7 @@ from funcs.paths import PARAMETERS_FILE
 import pyomo.environ as pyo
 import numpy as np
 
-from .read_data import read_parameters
+from funcs.read_data import read_parameters
 
     # TODO:Der Speicher kann bei SOC = 0 keine Wärme verlieren (theoretisch aber schon, da 55°C RLT) 
     # --> beachten :)
@@ -112,9 +112,6 @@ def optimize_energy_system(
     elec_hedge_share: float = 0.0,
     gas_price_mode: str = "spot",
 ):
-    electricity_price = np.asarray(electricity_price, dtype=float) \
-                        + elec_volumetric_surcharge(parameters)
-    
     """
     elec_price_mode  : "spot"   – Spotpreisreihe (electricity_price)
                        "tariff" – Festpreis aus parameters.yaml (price_parameters.electricity.tarif.usual_mid)
@@ -127,6 +124,12 @@ def optimize_energy_system(
                         Bei None (Default) wird der statische COP aus parameters.yaml
                         (system_parameters.HP.COP) verwendet (bisheriges Verhalten).
     """
+    # Spotreihe (Grosshandel) -> Endkundenpreis, damit sie mit dem
+    # All-in-Gastarif vergleichbar ist. Muss oberhalb der elec_price_mode-
+    # Logik stehen: der Tarifwert usual_mid ist bereits all-in.
+    electricity_price = (np.asarray(electricity_price, dtype=float)
+                         + elec_volumetric_surcharge(parameters))
+
     demand = demand.values
     T = range(len(demand))
 

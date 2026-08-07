@@ -52,7 +52,6 @@ import matplotlib.pyplot as plt
 # funktionieren, wenn das Skript direkt (z. B. via Spyder %runfile --wdir) aus dem
 # Skript-Ordner gestartet wird. LCOH.py liegt in <repo>/src/ACES-2026/funcs/.
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-os.chdir(_REPO_ROOT)
 
 from funcs.read_data import read_parameters
 from funcs.energy_system_optimization import (
