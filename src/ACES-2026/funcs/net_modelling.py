@@ -1,3 +1,4 @@
+from funcs.paths import PARAMETERS_FILE
 import geopandas as gpd
 import networkx as nx
 import numpy as np
@@ -6,10 +7,11 @@ from shapely import set_precision
 from shapely.geometry import LineString
 
 try:
-    from read_data import read_parameters
+    from funcs.read_data import read_parameters
 except ImportError:
     from funcs.read_data import read_parameters
-parameters = read_parameters("src/ACES-2026/parameters.yaml")
+
+parameters = read_parameters(PARAMETERS_FILE)
 
 # TODO: Bodentemperatur variabel?
 
@@ -95,13 +97,13 @@ def build_graph(gdf, length_col="Length"):
         else:
             continue 
 
-        load = data.get("Connection_Load (dummy)")
+        load = data.get("Connection Load")
         if load is not None and not np.isnan(float(load)) and load > 0:
-            G.nodes[end_node]["Connection_Load (dummy)"] = load
+            G.nodes[end_node]["Connection Load"] = load
 
         # Heating Unit (Hz) auf Endknoten übertragen
-        if data.get("Heating_unit"):
-            G.nodes[end_node]["Heating_unit"] = True
+        if data.get("Heating Unit"):
+            G.nodes[end_node]["Heating Unit"] = True
 
     return G
 
@@ -207,7 +209,7 @@ def create_pandapipes_network(G, pn_bar=6.0):
         node_to_jidx_RL[coord] = jidx_RL
 
         # Hausübergabestation: Heat Exchanger + Flow Control
-        connection_load = data.get("Connection_Load (dummy)")
+        connection_load = data.get("Connection Load")
         if connection_load is not None:
             qext_w = float(connection_load) * 1000.0  # kW → W
             mdot_kg_per_s = qext_w / (cp_j_per_kgk * dt_k)
@@ -230,7 +232,7 @@ def create_pandapipes_network(G, pn_bar=6.0):
             )
 
         # Wärmeerzeuger-/Übergabestation: Umlaufpumpe von RL nach VL
-        if data.get("Heating_unit") and not data.get("Connection_Load (dummy)"):
+        if data.get("Heating Unit") and not data.get("Connection Load"):
             pandapipes.create_circ_pump_const_pressure(
                 net,
                 return_junction=jidx_RL,
@@ -246,7 +248,7 @@ def create_pandapipes_network(G, pn_bar=6.0):
 
     for u, v, data in G.edges(data=True):
         length_km = data.get("Length", 0.0) / 1000.0
-        diameter_m = data.get('Diameter_mm', 22.3) / 1000.0  # mm → m
+        diameter_m = data.get('Diameter', 0.0223)  # bereits in m
         u_value = data.get('U-value_W/Km', 0.119)
         geom = data.get("geometry")
 

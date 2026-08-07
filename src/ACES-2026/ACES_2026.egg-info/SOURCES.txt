@@ -5,6 +5,11 @@ src/ACES-2026/ACES_2026.egg-info/SOURCES.txt
 src/ACES-2026/ACES_2026.egg-info/dependency_links.txt
 src/ACES-2026/ACES_2026.egg-info/requires.txt
 src/ACES-2026/ACES_2026.egg-info/top_level.txt
+src/ACES-2026/ACES_2026.egg-info/PKG-INFO
+src/ACES-2026/ACES_2026.egg-info/SOURCES.txt
+src/ACES-2026/ACES_2026.egg-info/dependency_links.txt
+src/ACES-2026/ACES_2026.egg-info/requires.txt
+src/ACES-2026/ACES_2026.egg-info/top_level.txt
 src/ACES-2026/funcs/LCOH.py
 src/ACES-2026/funcs/energy_system_optimization.py
 src/ACES-2026/funcs/era5_weather.py

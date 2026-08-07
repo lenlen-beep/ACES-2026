@@ -43,6 +43,7 @@ Verwendung (z. B. in main.py nach der Optimierung):
 
 import os
 
+from funcs.paths import PARAMETERS_FILE
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -50,8 +51,6 @@ import matplotlib.pyplot as plt
 # relativen Pfade ("src/ACES-2026/parameters.yaml") in funcs.* und hier auch dann
 # funktionieren, wenn das Skript direkt (z. B. via Spyder %runfile --wdir) aus dem
 # Skript-Ordner gestartet wird. LCOH.py liegt in <repo>/src/ACES-2026/funcs/.
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-os.chdir(_REPO_ROOT)
 
 from funcs.read_data import read_parameters
 from funcs.energy_system_optimization import (
@@ -60,6 +59,7 @@ from funcs.energy_system_optimization import (
     COP,
     eta_gas_boiler,
     feed_in_tariff,
+    elec_volumetric_surcharge,
     hp_invest_offset, hp_specific_cost,
     storage_invest_offset, storage_specific_cost,
     gas_invest_offset, gas_specific_cost,
@@ -67,7 +67,7 @@ from funcs.energy_system_optimization import (
     seasonal_invest_offset, seasonal_specific_cost,
 )
 
-parameters = read_parameters("src/ACES-2026/parameters.yaml")
+parameters = read_parameters(PARAMETERS_FILE)
 
 # Netz-/Rohrparameter (CAPEX über Netzlänge) – einziger Posten, der in der
 # Optimierung bisher nicht enthalten ist.
@@ -137,6 +137,9 @@ def calculate_lcoh(
 
     n_t = len(demand)
 
+     # Spotreihe -> Endkundenpreis, identisch zur Optimierung
+    electricity_price = electricity_price + elec_volumetric_surcharge(parameters)
+
     # --- Preisreihen aufbereiten (identisch zur Optimierung) -----------------
     elec_tariff = parameters["price_parameters"]["electricity"]["tarif"]["usual_mid"] * 10  # ct/kWh → €/MWh
     if elec_price_mode == "tariff":
@@ -194,12 +197,18 @@ def calculate_lcoh(
     opex_pump  = float(P_pump * np.sum(electricity_price * (charge + discharge)))
     opex_gas   = float(np.sum(gas_price * (Q_gas_boiler / eta_gas_boiler)))
 
+    # Netzentgelt-Leistungspreis (Fixkosten, €/a)
+    _el = parameters["price_parameters"]["electricity"]
+    _vbh = _el.get("vbh_class", "lower_2500VBH")
+    capacity_charge = _el["network_charge"][_vbh]["capacity_charge"]   # €/kW*a
+    opex_grid_capacity = capacity_charge * float(np.max(P_grid)) * 1000.0  # MW -> kW
+
     # --- PV-Erlös (Gutschrift, €/a) ------------------------------------------
     revenue_pv = float(np.sum(feed_in_tariff * pv_feed_in))
 
     # --- Gesamtkosten und LCOH -----------------------------------------------
     total_cost = (capex_hp + capex_storage + capex_gas + capex_pv + capex_seasonal
-                  + capex_grid + opex_elec + opex_pump + opex_gas + opex_om - revenue_pv)
+                  + capex_grid + opex_elec + opex_pump + opex_gas + opex_om + opex_grid_capacity - revenue_pv)
 
     heat_delivered = float(np.sum(demand))  # MWh/a
     lcoh_total = total_cost / heat_delivered
@@ -217,6 +226,7 @@ def calculate_lcoh(
         "Gas-Brennstoff (OPEX)":    opex_gas,
         "O&M (1,5 % CAPEX)":        opex_om,
         "PV-Einspeiseerlös":        -revenue_pv,   # negativ (Gutschrift)
+        "Netzentgelt Leistungspreis": opex_grid_capacity,
     }
 
     components = {}

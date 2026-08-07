@@ -1,7 +1,8 @@
+from funcs.paths import PARAMETERS_FILE
 import pyomo.environ as pyo
 import numpy as np
 
-from .read_data import read_parameters
+from funcs.read_data import read_parameters
 
     # TODO:Der Speicher kann bei SOC = 0 keine Wärme verlieren (theoretisch aber schon, da 55°C RLT) 
     # --> beachten :)
@@ -34,7 +35,7 @@ Methodik:
 - Kostenminimierung der Wärmepumpe und Speicherinvestition
 """
 
-parameters = read_parameters("src/ACES-2026/parameters.yaml")
+parameters = read_parameters(PARAMETERS_FILE)
 
 #Netzparameter
 cp_w = parameters["net_parameters"]["specific_heat_capacity"]
@@ -123,6 +124,12 @@ def optimize_energy_system(
                         Bei None (Default) wird der statische COP aus parameters.yaml
                         (system_parameters.HP.COP) verwendet (bisheriges Verhalten).
     """
+    # Spotreihe (Grosshandel) -> Endkundenpreis, damit sie mit dem
+    # All-in-Gastarif vergleichbar ist. Muss oberhalb der elec_price_mode-
+    # Logik stehen: der Tarifwert usual_mid ist bereits all-in.
+    electricity_price = (np.asarray(electricity_price, dtype=float)
+                         + elec_volumetric_surcharge(parameters))
+
     demand = demand.values
     T = range(len(demand))
 
@@ -416,3 +423,19 @@ def optimize_energy_system(
             pv_res, pv_feed_in_res, pv_cap_res,
             seasonal_charge_res, seasonal_discharge_res, seasonal_soc_res, seasonal_cap_res)
 
+def elec_volumetric_surcharge(parameters) -> float:
+    """Arbeitspreisbezogene Aufschläge auf den Spotpreis in €/MWh.
+
+    Enthält Netzentgelt-Arbeitspreis, Stromsteuer, netzentgeltbasierte Umlagen
+    und Konzessionsabgabe. Der Leistungspreis ist NICHT enthalten -- er ist nicht
+    grenzkostenrelevant und geht als Fixkostenterm in die LCOH ein.
+    """
+    el  = parameters["price_parameters"]["electricity"]
+    vbh = el.get("vbh_class", "lower_2500VBH")
+    ct_per_kwh = (
+        el["network_charge"][vbh]["commodity_charge"]
+        + el["tax"]
+        + sum(el["levies"].values())
+        + el["concession_fee"]
+    )
+    return ct_per_kwh * 10.0   # ct/kWh -> €/MWh

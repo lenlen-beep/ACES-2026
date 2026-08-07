@@ -1,9 +1,10 @@
 import pandas as pd
+from pathlib import Path
 
-DATA_DIR = "src/ACES-2026/Data/Aalborg_smart_meter_data/"
+DATA_DIR = Path(__file__).parent.parent.parent / "Data" / "Aalborg_smart_meter_data"
 
 # Beispielgebäude aus 1.csv mit nahezu vollständigen 2019-Daten
-EXAMPLE_FILE = DATA_DIR + "1.csv"
+EXAMPLE_FILE = DATA_DIR / "1.csv"
 EXAMPLE_IDS  = [17, 25, 38]
 
 
@@ -14,13 +15,19 @@ def load_example_buildings(filepath: str = EXAMPLE_FILE,
     Rückgabe: DataFrame mit Spalte 'Datum' (stündlich, 2019) und
               Spalten '1', '2', '3' (Effekt 1 in kW).
     """
-    df_raw = pd.read_csv(filepath,
-                         usecols=["CustomerID", "RoundedReadTime", "Effekt 1"],
-                         low_memory=False)
-    df_raw["RoundedReadTime"] = pd.to_datetime(df_raw["RoundedReadTime"],
-                                               dayfirst=True, errors="coerce")
+    chunks = []
+    for chunk in pd.read_csv(filepath,
+                              usecols=["CustomerID", "RoundedReadTime", "Effekt 1"],
+                              chunksize=100_000):
+        chunk = chunk[chunk["CustomerID"].isin(customer_ids)]
+        chunk["RoundedReadTime"] = pd.to_datetime(chunk["RoundedReadTime"],
+                                                   dayfirst=True, errors="coerce")
+        chunk = chunk[chunk["RoundedReadTime"].dt.year == 2019]
+        if not chunk.empty:
+            chunks.append(chunk)
+    df_raw = pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame(
+        columns=["CustomerID", "RoundedReadTime", "Effekt 1"])
     df_raw["Effekt 1"] = pd.to_numeric(df_raw["Effekt 1"], errors="coerce")
-    df_raw = df_raw[df_raw["RoundedReadTime"].dt.year == 2019]
 
     index_2019 = pd.date_range("2019-01-01", periods=8760, freq="1h")
     df_out = pd.DataFrame({"Datum": index_2019})
@@ -41,6 +48,7 @@ def load_example_buildings(filepath: str = EXAMPLE_FILE,
 
 
 
-df = load_example_buildings()
-print(df.head(10))
-print(f"\nForm: {df.shape}  |  NaN gesamt: {df.isna().sum().sum()}")
+if __name__ == "__main__":
+    df = load_example_buildings()
+    print(df.head(10))
+    print(f"\nForm: {df.shape}  |  NaN gesamt: {df.isna().sum().sum()}")
