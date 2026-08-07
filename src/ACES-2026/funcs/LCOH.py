@@ -194,12 +194,18 @@ def calculate_lcoh(
     opex_pump  = float(P_pump * np.sum(electricity_price * (charge + discharge)))
     opex_gas   = float(np.sum(gas_price * (Q_gas_boiler / eta_gas_boiler)))
 
+    # Netzentgelt-Leistungspreis (Fixkosten, €/a)
+    _el = parameters["price_parameters"]["electricity"]
+    _vbh = _el.get("vbh_class", "lower_2500VBH")
+    capacity_charge = _el["network_charge"][_vbh]["capacity_charge"]   # €/kW*a
+    opex_grid_capacity = capacity_charge * float(np.max(P_grid)) * 1000.0  # MW -> kW
+
     # --- PV-Erlös (Gutschrift, €/a) ------------------------------------------
     revenue_pv = float(np.sum(feed_in_tariff * pv_feed_in))
 
     # --- Gesamtkosten und LCOH -----------------------------------------------
     total_cost = (capex_hp + capex_storage + capex_gas + capex_pv + capex_seasonal
-                  + capex_grid + opex_elec + opex_pump + opex_gas + opex_om - revenue_pv)
+                  + capex_grid + opex_elec + opex_pump + opex_gas + opex_om + opex_grid_capacity - revenue_pv)
 
     heat_delivered = float(np.sum(demand))  # MWh/a
     lcoh_total = total_cost / heat_delivered
@@ -217,6 +223,9 @@ def calculate_lcoh(
         "Gas-Brennstoff (OPEX)":    opex_gas,
         "O&M (1,5 % CAPEX)":        opex_om,
         "PV-Einspeiseerlös":        -revenue_pv,   # negativ (Gutschrift)
+        "Strombezug WP (OPEX)":     opex_elec,
+        "Netzentgelt Leistungspreis": opex_grid_capacity,
+        "Pumpstrom (OPEX)":         opex_pump,
     }
 
     components = {}

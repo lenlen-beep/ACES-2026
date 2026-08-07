@@ -111,6 +111,9 @@ def optimize_energy_system(
     elec_hedge_share: float = 0.0,
     gas_price_mode: str = "spot",
 ):
+    electricity_price = np.asarray(electricity_price, dtype=float) \
+                        + elec_volumetric_surcharge(parameters)
+    
     """
     elec_price_mode  : "spot"   – Spotpreisreihe (electricity_price)
                        "tariff" – Festpreis aus parameters.yaml (price_parameters.electricity.tarif.usual_mid)
@@ -416,3 +419,19 @@ def optimize_energy_system(
             pv_res, pv_feed_in_res, pv_cap_res,
             seasonal_charge_res, seasonal_discharge_res, seasonal_soc_res, seasonal_cap_res)
 
+def elec_volumetric_surcharge(parameters) -> float:
+    """Arbeitspreisbezogene Aufschläge auf den Spotpreis in €/MWh.
+
+    Enthält Netzentgelt-Arbeitspreis, Stromsteuer, netzentgeltbasierte Umlagen
+    und Konzessionsabgabe. Der Leistungspreis ist NICHT enthalten -- er ist nicht
+    grenzkostenrelevant und geht als Fixkostenterm in die LCOH ein.
+    """
+    el  = parameters["price_parameters"]["electricity"]
+    vbh = el.get("vbh_class", "lower_2500VBH")
+    ct_per_kwh = (
+        el["network_charge"][vbh]["commodity_charge"]
+        + el["tax"]
+        + sum(el["levies"].values())
+        + el["concession_fee"]
+    )
+    return ct_per_kwh * 10.0   # ct/kWh -> €/MWh

@@ -45,7 +45,7 @@ export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_p
 buildings_df = pd.read_csv(r"src/ACES-2026/Data/selected_267_profiles_2019_wide.csv")
 
 # IDs aus GeoPackage (ID > 0 = echte Hausanschlüsse)
-trasse_ids = set(gdf.loc[gdf["ID"] > 0, "ID"].astype(str))
+trasse_ids = set(gdf.loc[gdf["ID"] > 0, "ID"].astype(int).astype(str))
 verfuegbar  = set(buildings_df.columns) - {"Datum"}
 in_trasse   = sorted(trasse_ids & verfuegbar, key=lambda x: int(x))
 nicht_in_df = trasse_ids - verfuegbar
@@ -273,6 +273,45 @@ print(f"  Pufferspeicher Zyklen/a:        {buf_cycles:>8.1f}  (Ladung / Kapazit�
 print(f"  Saisonalspeicher Zyklen/a:      {sea_cycles:>8.1f}  (Ladung / Kapazität)")
 print(f"{'='*58}\n")
 
+# --------------------------------------------------
+# Pruefung der Netzentgeltstufe (Jahresbenutzungsdauer)
+# --------------------------------------------------
+# Das Netzentgelt der SH Netz kennt zwei Stufen (< / >= 2.500 Bh). Welche gilt,
+# ergibt sich erst aus dem optimierten Dispatch, waehrend die Optimierung den
+# Arbeitspreis schon vorher braucht. Die Annahme in parameters.yaml
+# (price_parameters.electricity.vbh_class) wird hier ex post geprueft.
+
+from funcs.read_data import read_parameters
+_par = read_parameters()
+_el = _par["price_parameters"]["electricity"]
+_vbh_assumed = _el.get("vbh_class", "lower_2500VBH")
+
+# Strombezug aus dem Netz rekonstruieren (Strombilanz der Optimierung)
+_cop_arr = np.asarray(getattr(cop, "values", cop), dtype=float)
+_P_grid = np.clip(
+    np.asarray(result_df_heatpump) / _cop_arr
+    + np.asarray(result_pv_feed_in)
+    - np.asarray(result_pv),
+    0.0, None,
+)
+
+_W_a = float(_P_grid.sum())      # MWh/a
+_P_max = float(_P_grid.max())    # MW
+_vbh = _W_a / _P_max if _P_max > 0 else 0.0
+_vbh_actual = "higher_2500VBH" if _vbh >= 2500 else "lower_2500VBH"
+
+print(f"{'='*58}")
+print(f"  Netzbezug (Jahresarbeit):       {_W_a:>8.1f} MWh/a")
+print(f"  Netzbezug (Spitzenlast):        {_P_max:>8.3f} MW")
+print(f"  Jahresbenutzungsdauer:          {_vbh:>8.0f} h/a")
+print(f"  Angenommene Stufe:              {_vbh_assumed}")
+print(f"  Tatsaechliche Stufe:            {_vbh_actual}")
+if _vbh_actual != _vbh_assumed:
+    print("  >>> WARNUNG: Stufe passt nicht zur Annahme in parameters.yaml.")
+    print(f"  >>> vbh_class auf '{_vbh_actual}' setzen und erneut rechnen.")
+else:
+    print("  Stufe konsistent.")
+print(f"{'='*58}\n")
 
 # --------------------------------------------------
 # Plotting
@@ -332,7 +371,7 @@ plot_pv_daily(result_pv, result_pv_feed_in, result_pv_capacity, show_plot=True)
 # --------------------------------------------------
 from funcs.LCOH import calculate_lcoh, plot_lcoh_pie
 
-network_length = gdf["Length_m"].sum()   # [m]
+network_length = gdf["Length"].sum()   # [m]
 
 lcoh, components = calculate_lcoh(
     demand=load, electricity_price=electricity_price, gas_price=gas_price,

@@ -74,6 +74,13 @@ price_parameters:                 # SH-Netz 2025
         capacity_charge: 115.61   # Euro/kW*a
         commodity_charge: 1.38    # ct/kWh
     tax: 2.05                     # ct/kWh
+    levies:                       # netzentgeltbasierte Umlagen 2024 (ÜNB, netztransparenz.de)
+      kwkg: 0.275                 # ct/kWh, KWKG-Umlage
+      offshore: 0.656             # ct/kWh, Offshore-Netzumlage
+      special_grid_use: 0.643     # ct/kWh, § 19 StromNEV-Umlage
+                                  # Regelsatz Letztverbraucherkategorie A (< 1 Mio. kWh/a)
+    concession_fee: 0.11          # ct/kWh, Konzessionsabgabe Sondervertragskunde (KAV)
+    vbh_class: lower_2500VBH      # lower_2500VBH | higher_2500VBH -> siehe network_charge
     high_load_window:
       autumn: '16:45 - 19:00'
       winter: '17:00 - 19:15'
