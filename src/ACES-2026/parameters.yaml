@@ -80,7 +80,7 @@ price_parameters:                 # SH-Netz 2024
       special_grid_use: 0.643     # ct/kWh, § 19 StromNEV-Umlage
                                   # Regelsatz Letztverbraucherkategorie A (< 1 Mio. kWh/a)
     concession_fee: 0.11          # ct/kWh, Konzessionsabgabe Sondervertragskunde (KAV)
-    vbh_class: higher_2500VBH      # lower_2500VBH | higher_2500VBH -> siehe network_charge
+    vbh_class: lower_2500VBH      # lower_2500VBH | higher_2500VBH -> siehe network_charge
     high_load_window:
       autumn: '16:45 - 19:00'
       winter: '17:00 - 19:15'
