@@ -41,11 +41,10 @@ Verwendung (z. B. in main.py nach der Optimierung):
     plot_lcoh_pie(components, lcoh, show_plot=True)
 """
 
-import os
-
 from funcs.paths import PARAMETERS_FILE
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 # Arbeitsverzeichnis auf das Repo-Root setzen, damit die im Projekt hartcodierten
 # relativen Pfade ("src/ACES-2026/parameters.yaml") in funcs.* und hier auch dann

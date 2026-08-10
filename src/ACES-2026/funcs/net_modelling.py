@@ -39,6 +39,13 @@ def load_network_gpkg(path, layer, target_crs=TARGET_CRS, length_col="Length"):
     """
 
     gdf = gpd.read_file(path, layer=layer)
+    # Spaltenschema der QGIS-Datei auf die im Code erwarteten Namen normalisieren
+    gdf = gdf.rename(columns={
+        "Heating_unit":             "Heating Unit",
+        "Connection_Load (dummy)":  "Connection Load",
+    })
+    if "Diameter_mm" in gdf.columns:
+        gdf["Diameter"] = gdf["Diameter_mm"] / 1000.0      # mm -> m
     gdf = gdf.explode(index_parts=False).reset_index(drop=True)
     gdf = gdf.to_crs(target_crs)
 
@@ -327,7 +334,7 @@ def run_timeseries(net, buildings_df, building_cols=None):
             net.flow_control.at[fc_idx[j],   'controlled_mdot_kg_per_s']        = mdot
 
         try:
-            pandapipes.pipeflow(net)
+            pandapipes.pipeflow(net, mode="sequential")
             pump_row  = net.res_circ_pump_pressure.iloc[0]
             pump_mdot = abs(float(net.res_circ_pump_pressure['mdot_from_kg_per_s'].sum()))
             # t_from_k = Rücklauftemperatur (Ansaugseite), t_to_k = Vorlauftemperatur (Druckseite)

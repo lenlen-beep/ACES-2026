@@ -282,8 +282,7 @@ print(f"{'='*58}\n")
 # Arbeitspreis schon vorher braucht. Die Annahme in parameters.yaml
 # (price_parameters.electricity.vbh_class) wird hier ex post geprueft.
 
-from funcs.read_data import read_parameters
-_par = read_parameters()
+_par = parameters
 _el = _par["price_parameters"]["electricity"]
 _vbh_assumed = _el.get("vbh_class", "lower_2500VBH")
 
