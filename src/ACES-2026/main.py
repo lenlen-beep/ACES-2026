@@ -17,7 +17,8 @@ import numpy as np
 
 
 from funcs.read_data import read_parameters
-parameters = read_parameters(PARAMETERS_FILE)
+#parameters = read_parameters(PARAMETERS_FILE)
+parameters = read_parameters("src/ACES-2026/parameters.yaml")
 
 
 # -------------------------------------------------
@@ -46,7 +47,8 @@ export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_p
 buildings_df = pd.read_csv(r"src/ACES-2026/Data/selected_267_profiles_2019_wide.csv")
 
 # IDs aus GeoPackage (ID > 0 = echte Hausanschlüsse)
-trasse_ids = set(gdf.loc[gdf["ID"] > 0, "ID"].astype(int).astype(str))
+#trasse_ids = set(gdf.loc[gdf["ID"] > 0, "ID"].astype(int).astype(str))
+trasse_ids = set(gdf.loc[gdf["ID"] > 0, "ID"].astype(str))
 verfuegbar  = set(buildings_df.columns) - {"Datum"}
 in_trasse   = sorted(trasse_ids & verfuegbar, key=lambda x: int(x))
 nicht_in_df = trasse_ids - verfuegbar
@@ -61,11 +63,11 @@ result_df = run_timeseries(net, buildings_df)
 
 # Einzelne nicht konvergierte Zeitschritte (siehe pandapipes-Warnungen) linear interpolieren,
 # damit kein NaN in die Optimierung durchschlägt (Python-sum() überspringt NaN nicht wie pandas)
-nan_cols = ['mdot_kg_per_s', 't_supply_k', 't_return_k']
-n_nan = result_df[nan_cols].isna().any(axis=1).sum()
-if n_nan:
-    print(f"Hinweis: {n_nan} nicht konvergierte Zeitschritte werden linear interpoliert.")
-    result_df[nan_cols] = result_df[nan_cols].interpolate(limit_direction='both')
+#nan_cols = ['mdot_kg_per_s', 't_supply_k', 't_return_k']
+#n_nan = result_df[nan_cols].isna().any(axis=1).sum()
+#if n_nan:
+    #print(f"Hinweis: {n_nan} nicht konvergierte Zeitschritte werden linear interpoliert.")
+    #result_df[nan_cols] = result_df[nan_cols].interpolate(limit_direction='both')
 
 result_df.to_csv("src/ACES-2026/Data/result_timeseries.csv", index=False)
 # print(f'Ergebnis-Dataframe (Netzsimulation): {result_df}')
@@ -103,6 +105,11 @@ print(f"Netzverluste:                  {netzverlust_MWh:,.1f} MWh/a  ({netzverlu
 peak_row = buildings_df.iloc[[peak_idx]]  # doppelte Klammer → DataFrame statt Series
 # print(f'Spitzenlast: {peak_row}')
 peak_result_df = run_timeseries(net, peak_row)
+
+# Rohre dimensionieren
+from funcs.net_modelling import dimension_pipes
+df_dimensionierung = dimension_pipes(net, parameters)
+
 export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe_peak.gpkg")
 
 # Dauerlinie in MW (Optimierung erwartet MW)
@@ -369,9 +376,12 @@ plot_pv_daily(result_pv, result_pv_feed_in, result_pv_capacity, show_plot=True)
 # --------------------------------------------------
 # LCOH berechnen und plotten
 # --------------------------------------------------
+import sys, os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from funcs.LCOH import calculate_lcoh, plot_lcoh_pie
 
-network_length = gdf["Length"].sum()   # [m]
+#network_length = gdf["Length"].sum()   # [m]
+network_length = gdf["Length_m"].sum()   # [m]
 
 lcoh, components = calculate_lcoh(
     demand=load, electricity_price=electricity_price, gas_price=gas_price,
