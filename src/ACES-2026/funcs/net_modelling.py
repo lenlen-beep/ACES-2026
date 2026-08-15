@@ -384,3 +384,99 @@ def export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path, crs=TARGET_CRS):
     gdf_out.index = range(len(gdf_out))
     gdf_out.to_file(path, driver='GPKG')
     print(f"GeoPackage gespeichert: {path}")
+
+
+# DN-Katalog: (Bezeichnung, Innendurchmesser [m])
+_DN_CATALOG = [
+    ("DN 20",  0.0217),
+    ("DN 25",  0.0285),
+    ("DN 32",  0.0372),
+    ("DN 40",  0.0431),
+    ("DN 50",  0.0545),
+    ("DN 65",  0.0703),
+    ("DN 80",  0.0825),
+    ("DN 100", 0.1071),
+    ("DN 125", 0.1325),
+    ("DN 150", 0.1603),
+    ("DN 200", 0.2101),
+    ("DN 250", 0.2630),
+]
+
+
+def _specific_pressure_loss(mdot_kg_per_s, d_m, kr_m, rho=978.0, mu=4.04e-4):
+    """Darcy-Weisbach Druckverlust [Pa/m] für gegebenen Massenstrom und Innendurchmesser.
+
+    Reibungszahl nach Swamee-Jain (explizite Näherung der Colebrook-White-Gleichung).
+    Wasserparameter bei ~70 °C: rho=978 kg/m³, mu=4.04e-4 Pa·s.
+    """
+    if mdot_kg_per_s <= 0:
+        return 0.0
+    A  = np.pi / 4 * d_m ** 2
+    v  = mdot_kg_per_s / (rho * A)
+    Re = rho * v * d_m / mu
+    if Re < 1:
+        return 0.0
+    # Swamee-Jain
+    lam = 0.25 / (np.log10(kr_m / (3.7 * d_m) + 5.74 / Re ** 0.9)) ** 2
+    return lam * rho * v ** 2 / (2 * d_m)
+
+
+def dimension_pipes(net, parameters):
+    """Dimensioniert alle Rohre im pandapipes-Netz stufenweise nach DN-Katalog.
+
+    Für jedes Rohr wird ab DN 20 aufsteigend das kleinste DN gewählt, bei dem
+    der spezifische Druckverlust ≤ parameters['pipe_parameters']['specific_pressure_loss']
+    (Pa/m) liegt. Die Massenstromwerte kommen aus net.res_pipe (muss vor dem Aufruf
+    durch pandapipes.pipeflow o.ä. befüllt sein, z.B. mit Spitzenlastsimulation).
+
+    net.pipe['diameter_m'] wird in-place aktualisiert.
+
+    Rückgabe
+    --------
+    DataFrame mit Spalten: pipe_idx, mdot_kg_per_s, DN, diameter_m, dp_pa_per_m
+    """
+    import pandas as pd
+
+    pp = parameters['pipe_parameters']
+    kr_m   = pp['kr'] / 1000                       # mm → m
+    dp_max = pp['specific_pressure_loss']           # Pa/m
+
+    rows = []
+    for idx in net.pipe.index:
+        mdot = abs(float(net.res_pipe.at[idx, 'mdot_from_kg_per_s']))
+
+        chosen_dn, chosen_d, chosen_dp = None, None, None
+        for dn_name, d in _DN_CATALOG:
+            dp = _specific_pressure_loss(mdot, d, kr_m)
+            if dp <= dp_max:
+                chosen_dn, chosen_d, chosen_dp = dn_name, d, dp
+                break
+
+        if chosen_dn is None:
+            # Massenstrom übersteigt auch bei DN 250 das Limit
+            chosen_dn, chosen_d = _DN_CATALOG[-1]
+            chosen_dp = _specific_pressure_loss(mdot, chosen_d, kr_m)
+            print(f"  WARNUNG Rohr {idx}: {chosen_dp:.0f} Pa/m bei {chosen_dn} – Limit überschritten!")
+
+        # u_value [W/(m·K)] aus altem alpha und altem Durchmesser zurückrechnen,
+        # dann alpha für neuen Durchmesser neu setzen (alpha = u_value / (π·D))
+        old_d     = net.pipe.at[idx, 'diameter_m']
+        old_alpha = net.pipe.at[idx, 'alpha_w_per_m2k']
+        u_value   = old_alpha * np.pi * old_d
+        new_alpha = u_value / (np.pi * chosen_d)
+
+        net.pipe.at[idx, 'diameter_m']      = chosen_d
+        net.pipe.at[idx, 'alpha_w_per_m2k'] = new_alpha
+
+        rows.append({
+            'pipe_idx':        idx,
+            'mdot_kg_per_s':   mdot,
+            'DN':              chosen_dn,
+            'diameter_m':      chosen_d,
+            'dp_pa_per_m':     chosen_dp,
+        })
+
+    df = pd.DataFrame(rows)
+    print(f"\nRohrdimensionierung abgeschlossen ({len(df)} Rohre):")
+    print(df.groupby('DN').size().rename('Anzahl').to_string())
+    return df
