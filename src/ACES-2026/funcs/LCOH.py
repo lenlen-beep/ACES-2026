@@ -353,8 +353,8 @@ def plot_lcoh_pie(components, lcoh_total=None, show_plot=True):
     ax.legend(handles=legend_handles, fontsize=13, frameon=False,
               loc="center left", bbox_to_anchor=(0.82, 0.5))
 
-    ax.set_title("Levelized Cost of Heat (LCOH) – Component breakdown",
-                 fontsize=16, fontweight="bold", color="#1A1A1A", pad=20)
+    #ax.set_title("Levelized Cost of Heat (LCOH) – Component breakdown",
+                 #fontsize=16, fontweight="bold", color="#1A1A1A", pad=20)
     ax.axis("equal")
 
     os.makedirs(_PLOTS_DIR, exist_ok=True)

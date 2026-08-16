@@ -3,7 +3,8 @@ from funcs.plots import plot_temperatures, plot_prices, plot_gas_prices, \
                         plot_charge_discharge_process, plot_energy_system_output_sorted, \
                         plot_load_w_components, plot_SOC, plot_pv, plot_seasonal_storage, \
                         plot_network_losses, plot_energy_system_daily_stacked, \
-                        plot_buffer_daily, plot_seasonal_daily, plot_pv_daily
+                        plot_buffer_daily, plot_seasonal_daily, plot_pv_daily, \
+                        plot_gas_boiler
 from funcs.read_data import read_price_data, read_gas_price_data, read_pv_data, load_temperature_data
 from funcs.era5_weather import load_era5_weather, compute_pv_generation, compute_cop, LAT as ERA5_LAT, LON as ERA5_LON
 from funcs.energy_system_optimization import optimize_energy_system
@@ -372,6 +373,8 @@ plot_buffer_daily(result_df_charge, result_df_discharge, show_plot=True)
 plot_seasonal_daily(result_seasonal_charge, result_seasonal_discharge, show_plot=True)
 
 plot_pv_daily(result_pv, result_pv_feed_in, result_pv_capacity, show_plot=True)
+
+plot_gas_boiler(result_df_gas_boiler, result_gas_boiler_capacity, show_plot=True)
 
 # --------------------------------------------------
 # LCOH berechnen und plotten
