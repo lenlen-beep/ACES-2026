@@ -1,22 +1,21 @@
-from funcs.paths import PARAMETERS_FILE
 import geopandas as gpd
 import networkx as nx
 import numpy as np
+import pandas as pd
 import pandapipes
 from shapely import set_precision
 from shapely.geometry import LineString
 
 try:
-    from funcs.read_data import read_parameters
+    from read_data import read_parameters
 except ImportError:
     from funcs.read_data import read_parameters
-
-parameters = read_parameters(PARAMETERS_FILE)
+parameters = read_parameters("src/ACES-2026/parameters.yaml")
 
 # TODO: Bodentemperatur variabel?
 
 TARGET_CRS = "EPSG:25832"  # UTM Zone 32N
-COORD_PRECISION = 0.01      # [m] — auf cm runden, damit Endpunkte topologisch übereinstimmen
+COORD_PRECISION = 0.01   # [m] — auf cm runden, damit Endpunkte topologisch übereinstimmen
 
 
 def load_network_gpkg(path, layer, target_crs=TARGET_CRS, length_col="Length"):
@@ -115,7 +114,7 @@ def build_graph(gdf, length_col="Length"):
     return G
 
 
-def test_connectivity(G, snap_tolerance=0.5, export_path=None):
+def test_connectivity(G, snap_tolerance=0.01, export_path=None):
     """
     Prüft, ob der Graph topologisch verbunden ist und ob es geometrische
     Lücken zwischen nahe beieinanderliegenden Knoten gibt.
@@ -239,7 +238,7 @@ def create_pandapipes_network(G, pn_bar=6.0):
             )
 
         # Wärmeerzeuger-/Übergabestation: Umlaufpumpe von RL nach VL
-        if data.get("Heating Unit") and not data.get("Connection Load"):
+        if data.get("Heating Unit") and not data.get('Connection Load'):
             pandapipes.create_circ_pump_const_pressure(
                 net,
                 return_junction=jidx_RL,
@@ -304,8 +303,7 @@ def run_timeseries(net, buildings_df, building_cols=None):
 
     Rückgabe
     --------
-    DataFrame mit Spalten 'Datum', 'mdot_kg_per_s' (Pumpenmassenstrom),
-    't_return_k' und 't_supply_k'
+    DataFrame mit Spalten 'Datum' und 'mdot_kg_per_s' (Pumpenmassenstrom)
     """
     import pandas as pd
 
@@ -365,7 +363,6 @@ def export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path, crs=TARGET_CRS):
     Exportiert net.res_pipe als GeoPackage mit VL- und RL-Ergebnissen als getrennte Spalten.
     Eine Zeile = eine Leitung (Kante), Spalten: VL_*, RL_*.
     """
-    import pandas as pd
 
     res = net.res_pipe.copy()
     res['specific_p_loss_pa_per_m'] = (
@@ -435,8 +432,6 @@ def dimension_pipes(net, parameters):
     --------
     DataFrame mit Spalten: pipe_idx, mdot_kg_per_s, DN, diameter_m, dp_pa_per_m
     """
-    import pandas as pd
-
     pp = parameters['pipe_parameters']
     kr_m   = pp['kr'] / 1000                       # mm → m
     dp_max = pp['specific_pressure_loss']           # Pa/m
