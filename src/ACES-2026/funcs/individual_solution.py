@@ -2,11 +2,10 @@
 Benchmark: District Heating (DH) vs. Decentralized Heating  --  Report Section 5.5.
 
 Compares the optimized district-heating system (central heat pump + storages + gas
-backup + PV + pipe network, produced by main.py / funcs.LCOH) against two per-household
-decentralized reference systems, on a fair Levelized-Cost-of-Heat (LCOH) basis:
+backup + PV + pipe network, produced by main.py / funcs.LCOH) against a per-household
+decentralized reference system, on a fair Levelized-Cost-of-Heat (LCOH) basis:
 
     D1  individual air-to-water heat pump  (+ electric backup heater, bivalent)
-    D2  individual gas condensing boiler
 
 Design principle -- SAME useful heat, SAME boundary conditions:
     * reference quantity  Q_use  = sum of the (network-connected) building profiles,
@@ -135,16 +134,10 @@ class DecentralParams:
     buffer_eur: float = 1500.0             # small DHW/decoupling buffer per house
     f_biv: float = 0.60                    # bivalence fraction of the design peak
     design_peak_quantile: float = 0.99     # robust design peak (ignore rare DHW spikes)
-    # --- individual gas condensing boiler (D2) ---
-    gas_offset_eur: float = 4000.0
-    gas_specific_eur_kw: float = 80.0
-    gas_standing_charge_eur_a: float = 120.0   # per-house gas grid standing charge
     # --- shared ---
     om_rate: float = 0.015                  # O&M as fraction of CAPEX per year (as in DH LCOH)
     # --- retail sensitivity (O-1 variant) ---
     elec_retail_eur_mwh: float = 250.0      # household/HP retail all-in (no separate Leistungspreis)
-    gas_retail_eur_mwh: float = 100.0       # household gas retail all-in
-
 
 # design supply temperature by construction year (radiator design temps by era) -- documented
 def supply_temperature_for_year(year: float) -> float:
@@ -261,30 +254,6 @@ def individual_heat_pumps(load_kw, T_amb, T_supply, dp: DecentralParams,
     return df, agg
 
 
-def individual_gas_boilers(load_kw, dp: DecentralParams, tariff_mode="uniform"):
-    """D2 -- one gas condensing boiler per building."""
-    a = annuity_factor()
-    eta = SHARED["eta_gas_boiler"]
-    true_peak = load_kw.max(axis=0)
-    Q = load_kw.sum(axis=0) / 1000.0
-    fuel = Q / eta                                               # gas input [MWh]
-
-    capex = dp.gas_offset_eur + dp.gas_specific_eur_kw * true_peak
-    price = SHARED["gas_price_eur_mwh"] if tariff_mode == "uniform" else dp.gas_retail_eur_mwh
-    opex_energy = price * fuel + dp.gas_standing_charge_eur_a
-    opex_om = dp.om_rate * capex
-    cost_a = capex * a + opex_energy + opex_om
-
-    df = pd.DataFrame({
-        "Q_use_MWh": Q, "gas_cap_kW": true_peak, "fuel_MWh": fuel,
-        "capex_eur": capex, "opex_energy_eur_a": opex_energy,
-        "cap_charge_eur_a": 0.0, "opex_om_eur_a": opex_om, "cost_eur_a": cost_a,
-    })
-    agg = _aggregate(df, sum_peaks=float(true_peak.sum()),
-                     co2=float(fuel.sum() * SHARED["co2_gas_t_per_mwh"]))
-    return df, agg
-
-
 def _aggregate(df, sum_peaks, co2):
     Q = df["Q_use_MWh"].sum()
     capex = df["capex_eur"].sum()
@@ -299,7 +268,7 @@ def _aggregate(df, sum_peaks, co2):
         "cost_eur_a": df["cost_eur_a"].sum(),
         "lcoh_eur_mwh": df["cost_eur_a"].sum() / Q,
         "sum_individual_peaks_kW": sum_peaks,
-        "installed_th_kW": (df.get("hp_cap_kW", df.get("gas_cap_kW"))).sum(),
+        "installed_th_kW": float(df["hp_cap_kW"].sum()) if "hp_cap_kW" in df.columns else None,
         "mean_JAZ": float(np.average(df["JAZ"], weights=df["Q_use_MWh"]))
                     if "JAZ" in df else None,
         "co2_t_a": co2,
@@ -315,7 +284,7 @@ class DHReference:
     """DH side of the benchmark. lcoh_total_eur_mwh is the group's optimization result
     (Report §3.4.1 / §5.2). Network CAPEX is deterministic from the trasse length and pipe
     cost, so it is split out explicitly to expose the heat-density effect."""
-    lcoh_total_eur_mwh: float = 339.76      # reported model LCOH (per generated MWh)
+    lcoh_total_eur_mwh: float = 319.83      # reported model LCOH, §5.3 reference case (incl. grid capacity charge)
     Q_use_mwh: float = 2099.3               # useful heat delivered to connected buildings
     Q_gen_mwh: float = 2099.3               # generated heat at the plant (>= Q_use if losses)
     network_length_m: float = 6406.0
@@ -338,12 +307,12 @@ class DHReference:
         total_use = self.lcoh_total_eur_mwh * self.Q_gen_mwh / self.Q_use_mwh
         net = self.network_capex_eur_mwh()
         cap = self.capacity_charge_eur_mwh()
-        residual = total_use - net            # generation+storage+opex+O&M (capacity charge
-        return {                              # is assumed not yet in the reported total, O-2)
+        residual = total_use - net            # generation+storage+opex+O&M
+        return {                              # (capacity charge is already inside the reported LCOH, §5.3)
             "network_capex": net,
             "generation_operation": residual,
             "capacity_charge_added": cap,
-            "total_incl_cap_charge": total_use + cap,
+            "total_incl_cap_charge": total_use,   # capacity charge already in reported LCOH (§5.3); not added on top
             "total_reported_use_basis": total_use,
         }
 
@@ -352,7 +321,7 @@ class DHReference:
 # 6. Comparison, plots, break-even
 # =========================================================================================
 
-def compare_systems(dh: DHReference, d1_agg, d2_agg):
+def compare_systems(dh: DHReference, d1_agg):
     rows = []
     dhb = dh.breakdown_eur_mwh()
     rows.append({"system": "DH (central)", "lcoh_eur_mwh": dhb["total_incl_cap_charge"],
@@ -362,7 +331,7 @@ def compare_systems(dh: DHReference, d1_agg, d2_agg):
                  "cap_charge_eur_mwh": dhb["capacity_charge_added"],
                  "co2_t_a": None,
                  "mean_JAZ": None, "installed_th_kW": None})
-    for name, ag in [("D1 individual HP", d1_agg), ("D2 individual gas", d2_agg)]:
+    for name, ag in [("D1 individual HP", d1_agg)]:
         Q = ag["Q_use_MWh"]
         rows.append({
             "system": name, "lcoh_eur_mwh": ag["lcoh_eur_mwh"],
@@ -482,13 +451,12 @@ def run_benchmark(dp: DecentralParams | None = None, tariff_mode="uniform",
     T_supply = np.array([supply_temperature_for_year(y) for y in meta["construction_year"]])
 
     d1_df, d1 = individual_heat_pumps(load_kw, T_amb, T_supply, dp, tariff_mode, monovalent)
-    d2_df, d2 = individual_gas_boilers(load_kw, dp, tariff_mode)
 
     if dh is None:
         Q_use = load_kw.sum() / 1000.0
         dh = DHReference(Q_use_mwh=Q_use, Q_gen_mwh=Q_use,
                          network_thermal_peak_kw=float(load_kw.sum(axis=1).max()))
-    cmp_df = compare_systems(dh, d1, d2)
+    cmp_df = compare_systems(dh, d1)
 
     # diversity factor on the connected set
     g = dh.network_thermal_peak_kw / d1["sum_individual_peaks_kW"]
@@ -513,7 +481,7 @@ def run_benchmark(dp: DecentralParams | None = None, tariff_mode="uniform",
           f"generation/operation {dhb['generation_operation']:.1f} | "
           f"capacity charge {dhb['capacity_charge_added']:.1f}")
 
-    competitors = {"D1 individual HP": d1["lcoh_eur_mwh"], "D2 individual gas": d2["lcoh_eur_mwh"]}
+    competitors = {"D1 individual HP": d1["lcoh_eur_mwh"]}
     for name, lcoh in competitors.items():
         _, be = breakeven_heat_density(dh, lcoh)
         print(f"break-even heat density vs. {name}: q_L = {be:.2f} MWh/(m·a)"
@@ -525,13 +493,11 @@ def run_benchmark(dp: DecentralParams | None = None, tariff_mode="uniform",
         plot_breakeven(dh, competitors, show=show)
         d1_df.assign(system="D1_HP").to_csv(
             os.path.join(DATA_DIR, "individual_solution_per_building_hp.csv"), index=False)
-        d2_df.assign(system="D2_gas").to_csv(
-            os.path.join(DATA_DIR, "individual_solution_per_building_gas.csv"), index=False)
         cmp_df.to_csv(os.path.join(DATA_DIR, "benchmark_summary.csv"), index=False)
         print(f"CSVs saved to {DATA_DIR}")
 
-    return {"comparison": cmp_df, "d1": d1, "d2": d2, "dh": dh, "g": g,
-            "d1_df": d1_df, "d2_df": d2_df, "temp_source": tsrc}
+    return {"comparison": cmp_df, "d1": d1, "dh": dh, "g": g,
+            "d1_df": d1_df, "temp_source": tsrc}
 
 
 if __name__ == "__main__":
