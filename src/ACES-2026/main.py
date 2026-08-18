@@ -28,7 +28,7 @@ parameters = read_parameters("src/ACES-2026/parameters.yaml")
 
 # Trassierung importieren
 gdf = load_network_gpkg(
-    path="src/ACES-2026/Data/Trassierung_Jerrishoe.gpkg",
+    path="src/ACES-2026/Data/Trassierung_Jerrishoe_50pAQ.gpkg",
     layer="Trassierung_Jerrishoe",
 )
 
