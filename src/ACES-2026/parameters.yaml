@@ -43,7 +43,7 @@ system_parameters:
     initial_seasonal_storage_capacity: 10000 # m3
     max_seasonal_charge_rate: 0.003           # Anteil/Stunde (~14 Tage Vollladung)
     max_seasonal_discharge_rate: 0.003        # Anteil/Stunde
-    Q_loss_seasonal: 0.00003                  # relativer Verlust [1/h] ≈ 15 % Verlust pro Saison (6 Monate)
+    Q_loss_seasonal: 0.00005                  # relativer Verlust [1/h] ≈ 15 % Verlust pro Saison (6 Monate)
 
   PV:
     invest_offset_pv: 0           # Euro
@@ -95,4 +95,17 @@ price_parameters:                 # SH-Netz 2024
 pipe_parameters:
   kr: 0.04                        # mm
   specific_pressure_loss: 150     # Pa/m
-  specific_invest_pipe: 1000      # Euro/m
+  specific_invest_pipe: 600      # Euro/m
+  pipe_catalog:
+    - {norm: DN20,  diameter_mm: 21.7}
+    - {norm: DN25,  diameter_mm: 28.5}
+    - {norm: DN32,  diameter_mm: 37.2}
+    - {norm: DN40,  diameter_mm: 43.1}
+    - {norm: DN50,  diameter_mm: 54.5}
+    - {norm: DN65,  diameter_mm: 70.3}
+    - {norm: DN80,  diameter_mm: 82.5}
+    - {norm: DN100, diameter_mm: 107.1}
+    - {norm: DN125, diameter_mm: 132.5}
+    - {norm: DN150, diameter_mm: 160.3}
+    - {norm: DN200, diameter_mm: 210.1}
+    - {norm: DN250, diameter_mm: 263.0}
