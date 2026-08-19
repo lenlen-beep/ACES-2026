@@ -95,7 +95,7 @@ price_parameters:                 # SH-Netz 2024
 pipe_parameters:
   kr: 0.04                        # mm
   specific_pressure_loss: 150     # Pa/m
-  specific_invest_pipe: 600      # Euro/m
+  specific_invest_pipe: 400      # Euro/m
   pipe_catalog:
     - {norm: DN20,  diameter_mm: 21.7}
     - {norm: DN25,  diameter_mm: 28.5}
