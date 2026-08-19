@@ -4,9 +4,8 @@ import numpy as np
 
 from funcs.energy_system_optimization import storage_volume_to_MWh
 
-# Calibri-ähnliche Schrift (Calibri → Helvetica → Arial als Fallback)
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['Calibri', 'Helvetica Neue', 'Helvetica', 'Arial', 'DejaVu Sans']
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
 
 # Farbpalette Energiesystem
 COLOR_WP       = "#00395B"   # EUF-Blau      — Wärmepumpe
