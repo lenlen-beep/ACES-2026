@@ -322,8 +322,8 @@ def plot_lcoh_pie(components, lcoh_total=None, show_plot=True):
         elif val != 0:
             print(f"Note: '{en}' is negative ({val:,.0f} €/a) → net credit, not shown.")
 
-    plt.rcParams['font.family'] = 'sans-serif'
-    plt.rcParams['font.sans-serif'] = ['Calibri', 'Helvetica Neue', 'Helvetica', 'Arial', 'DejaVu Sans']
+    plt.rcParams['font.family'] = 'serif'
+    plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
 
     fig, ax = plt.subplots(figsize=(16, 9), facecolor="white")
 
@@ -338,19 +338,19 @@ def plot_lcoh_pie(components, lcoh_total=None, show_plot=True):
         wedgeprops=dict(width=0.48, edgecolor="white", linewidth=2),
     )
     for t in autotexts:
-        t.set_fontsize(12)
+        t.set_fontsize(20)
         t.set_fontweight("bold")
         t.set_color("#1A1A1A")
 
     if lcoh_total is not None:
         ax.text(0, 0, f"LCOH\n{lcoh_total:.1f} €/MWh",
                 ha="center", va="center",
-                fontsize=15, fontweight="bold", color="#1A1A1A")
+                fontsize=20, fontweight="bold", color="#1A1A1A")
 
     # Legende rechts
     from matplotlib.patches import Patch
     legend_handles = [Patch(facecolor=c, label=l) for l, c in zip(labels_en, colors)]
-    ax.legend(handles=legend_handles, fontsize=13, frameon=False,
+    ax.legend(handles=legend_handles, fontsize=20, frameon=False,
               loc="center left", bbox_to_anchor=(0.82, 0.5))
 
     #ax.set_title("Levelized Cost of Heat (LCOH) – Component breakdown",
