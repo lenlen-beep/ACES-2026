@@ -274,7 +274,7 @@ def plot_pv(pv_res, pv_feed_in_res, pv_cap_res, show_plot=True):
     fig.subplots_adjust(hspace=0.12)
 
     ax1.plot(pv_res,         color=COLOR_PV,  linewidth=0.8, label="PV generation")
-    ax1.plot(pv_self_use,    color=COLOR_WP,  linewidth=0.8, label="Self-consumption (heat pump)")
+    ax1.plot(pv_self_use,    color=COLOR_WP,  linewidth=0.8, label="Self-consumption")
     ax1.plot(pv_feed_in_res, color=COLOR_GAS, linewidth=0.8, label="Grid feed-in")
     ax1.set_ylabel("Power in MW", fontsize=LABEL_FONTSIZE)
     #ax1.set_title(f"PV system",
@@ -284,7 +284,7 @@ def plot_pv(pv_res, pv_feed_in_res, pv_cap_res, show_plot=True):
 
     sorted_pv = np.sort(np.array(pv_res))[::-1]
     ax2.fill_between(range(len(sorted_pv)), sorted_pv, color=COLOR_PV, alpha=0.5,
-                     label="PV generation (sorted)")
+                     label="PV duration curve")
     ax2.set_xlabel("Hours (sorted)", fontsize=LABEL_FONTSIZE)
     ax2.set_ylabel("Power in MW", fontsize=LABEL_FONTSIZE)
     #ax2.set_title("PV load duration curve", fontsize=TITLE_FONTSIZE - 1)
@@ -319,9 +319,7 @@ def plot_seasonal_storage(seasonal_charge_res, seasonal_discharge_res, seasonal_
     _ppt_style(ax1)
 
     ax2.plot(seasonal_soc_res, color=COLOR_SAISONAL, linewidth=0.8, label="SOC")
-    if seasonal_MWh > 0:
-        ax2.axhline(seasonal_MWh, color="#888888", linestyle="--", linewidth=1.2,
-                    label=f"Capacity {seasonal_MWh:.0f} MWh")
+    #if seasonal_MWh > 0:
     ax2.set_xlabel("Time in h", fontsize=LABEL_FONTSIZE)
     ax2.set_ylabel("Energy in MWh", fontsize=LABEL_FONTSIZE)
     ax2.legend(fontsize=LEGEND_FONTSIZE, frameon=False)
@@ -494,16 +492,10 @@ def plot_gas_boiler(gas_boiler_res, gas_boiler_capacity, show_plot=True):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 9), facecolor="white",
                                    gridspec_kw={"height_ratios": [2, 1]})
     fig.subplots_adjust(hspace=0.08)
-    fig.suptitle(f"Gas boiler – Annual operation  "
-                 f"(capacity: {gas_boiler_capacity:.3f} MW  |  "
-                 f"{annual_MWh:.1f} MWh/a  |  {full_load_hours:.0f} full-load hours)",
-                 fontsize=TITLE_FONTSIZE, fontweight="bold", color="#1A1A1A")
-
     # Oberes Panel: Zeitreihe
     ax1.fill_between(hours, gas, color=COLOR_GAS, alpha=0.75, label="Gas boiler output")
-    if gas_boiler_capacity > 0:
-        ax1.axhline(gas_boiler_capacity, color="#888888", linestyle="--", linewidth=1.2,
-                    label=f"Capacity {gas_boiler_capacity:.3f} MW")
+    #if gas_boiler_capacity > 0:
+        #ax1.axhline(gas_boiler_capacity, color="#888888", linestyle="--", linewidth=1.2)
     ax1.set_ylabel("Power in MW", fontsize=LABEL_FONTSIZE)
     ax1.legend(fontsize=LEGEND_FONTSIZE, frameon=True, facecolor="white", edgecolor="#CCCCCC")
     _ppt_style(ax1)
