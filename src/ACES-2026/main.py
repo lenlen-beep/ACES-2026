@@ -28,7 +28,7 @@ parameters = read_parameters("src/ACES-2026/parameters.yaml")
 
 # Trassierung importieren
 gdf = load_network_gpkg(
-    path="src/ACES-2026/Data/Trassierung_Jerrishoe_50pAQ.gpkg",
+    path="src/ACES-2026/Data/Trassierung_Jerrishoe_100pAQ.gpkg",
     layer="Trassierung_Jerrishoe",
 )
 
@@ -38,18 +38,10 @@ test_connectivity(graph, export_path="src/ACES-2026/Data/graph_komponenten.gpkg"
 
 net, pipe_geoms, pipe_pairs = create_pandapipes_network(graph)
 
-# Testrechnung
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", message=".*pressure is negative.*", category=UserWarning)
-    pandapipes.pipeflow(net, mode="sequential")
-export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe_example.gpkg")
-
 # Gebäudedaten laden und auf Trasse filtern
 buildings_df = pd.read_csv(r"src/ACES-2026/Data/selected_267_profiles_2019_wide.csv")
 
-# IDs aus GeoPackage (ID > 0 = echte Hausanschlüsse)
-#trasse_ids = set(gdf.loc[gdf["ID"] > 0, "ID"].astype(int).astype(str))
-trasse_ids = set(gdf.loc[gdf["ID"] > 0, "ID"].astype(str))
+trasse_ids = set(gdf.loc[gdf["ID"] > 0, "ID"].astype(int).astype(str))
 verfuegbar  = set(buildings_df.columns) - {"Datum"}
 in_trasse   = sorted(trasse_ids & verfuegbar, key=lambda x: int(x))
 nicht_in_df = trasse_ids - verfuegbar
@@ -57,38 +49,32 @@ buildings_df = buildings_df[["Datum"] + in_trasse]
 print(f"Gebäude nach Trassierung: {len(in_trasse)} behalten "
       f"({len(verfuegbar) - len(in_trasse)} entfernt, "
       f"{len(nicht_in_df)} in Trasse aber nicht in CSV)")
-# print(f'Gebäude-Dataframe: {buildings_df}')
 
-# Zeitreihensimulation Netz
+# Spitzenlast direkt aus Gebäudeprofilen bestimmen (kein pandapipes-Lauf nötig)
+building_cols = [c for c in buildings_df.columns if c != 'Datum']
+peak_idx  = buildings_df[building_cols].sum(axis=1).idxmax()
+peak_date = buildings_df.loc[peak_idx, 'Datum']
+peak_load_kW = buildings_df.loc[peak_idx, building_cols].sum()
+print(f"Spitzenlast (Gebäude): {peak_load_kW:.1f} kW  am  {peak_date}")
+
+# Rohrdimensionierung: Einzelschritt für Spitzenlast simulieren → Rohre dimensionieren
+from funcs.net_modelling import fix_pipe_orientations, dimension_pipes
+peak_row = buildings_df.iloc[[peak_idx]]
+peak_result_df = run_timeseries(net, peak_row)
+fix_pipe_orientations(net)
+df_dimensionierung = dimension_pipes(net, parameters)
+export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe_peak.gpkg")
+
+# Vollständige Zeitreihensimulation mit dimensionierten Rohren
 result_df = run_timeseries(net, buildings_df)
-
-# Einzelne nicht konvergierte Zeitschritte (siehe pandapipes-Warnungen) linear interpolieren,
-# damit kein NaN in die Optimierung durchschlägt (Python-sum() überspringt NaN nicht wie pandas)
-#nan_cols = ['mdot_kg_per_s', 't_supply_k', 't_return_k']
-#n_nan = result_df[nan_cols].isna().any(axis=1).sum()
-#if n_nan:
-    #print(f"Hinweis: {n_nan} nicht konvergierte Zeitschritte werden linear interpoliert.")
-    #result_df[nan_cols] = result_df[nan_cols].interpolate(limit_direction='both')
-
 result_df.to_csv("src/ACES-2026/Data/result_timeseries.csv", index=False)
-# print(f'Ergebnis-Dataframe (Netzsimulation): {result_df}')
-
-# Spitzenlast filtern
-peak_idx  = result_df['mdot_kg_per_s'].idxmax()
-peak_mass_flow = result_df.loc[peak_idx, 'mdot_kg_per_s']
-peak_date = result_df.loc[peak_idx, 'Datum']
-peak_load_kW = peak_mass_flow * parameters['net_parameters']['cp'] * parameters['net_parameters']['delta_T'] / 1000
-print(f"Spitzenlast: {peak_load_kW:.1f} kW  |  Massenstrom: {peak_mass_flow:.4f} kg/s  am  {peak_date}")
 
 # Gesamtwärme der Pumpe: mdot × cp × tatsächliches ΔT (VL − RL an der Pumpe)
-# Nicht Design-ΔT verwenden — sonst sind Rohrverluste unsichtbar!
 cp = parameters['net_parameters']['cp']
 result_df['delta_T_ist'] = result_df['t_supply_k'] - result_df['t_return_k']
 result_df['load_kW'] = result_df['mdot_kg_per_s'] * cp * result_df['delta_T_ist'] / 1000
-# print(result_df)
 
 # Netzverluste berechnen
-building_cols = [c for c in buildings_df.columns if c != 'Datum']
 result_df['consumer_load_kW'] = buildings_df[building_cols].sum(axis=1).values
 result_df['net_loss_kW'] = result_df['load_kW'] - result_df['consumer_load_kW']
 
@@ -101,18 +87,6 @@ print(f"\n--- Netzverluste ---")
 print(f"Jahresgesamtverbrauch (Netz):  {jahresverbrauch_MWh:,.1f} MWh/a")
 print(f"Gebäudeverbrauch (Summe):      {gebaeude_MWh:,.1f} MWh/a")
 print(f"Netzverluste:                  {netzverlust_MWh:,.1f} MWh/a  ({netzverlust_anteil_pct:.1f} %)")
-
-# Für die Rohrdimensionierung: Spitzenlastreihe simulieren
-peak_row = buildings_df.iloc[[peak_idx]]  # doppelte Klammer → DataFrame statt Series
-# print(f'Spitzenlast: {peak_row}')
-peak_result_df = run_timeseries(net, peak_row)
-
-# Rohre mit negativem Massenstrom drehen, dann dimensionieren
-from funcs.net_modelling import fix_pipe_orientations, dimension_pipes
-fix_pipe_orientations(net)
-df_dimensionierung = dimension_pipes(net, parameters)
-
-export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe_peak.gpkg")
 
 # Dauerlinie in MW (Optimierung erwartet MW)
 load = result_df.set_index('Datum')['load_kW'] / 1000
