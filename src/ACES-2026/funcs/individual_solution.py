@@ -469,14 +469,23 @@ def plot_breakeven(dh: DHReference, competitors: dict, out=None, show=False):
         ax.axhline(lcoh, color=c, ls=":", lw=1.8, label=f"{name}: {lcoh:.0f} €/MWh")
         _, be = breakeven_heat_density(dh, lcoh)
         if be == be and 0 < be < df["q_L_MWh_per_m_a"].max():
+            ax.axvline(be, color=c, ls="--", lw=1.5, label=f"break-even q_L = {be:.2f}")
             ax.plot([be], [lcoh], "o", color=c, markersize=10)
 
     ax.set_xlabel("Linear heat density q_L in MWh/(m·a)", fontsize=LABEL_FONTSIZE)
     ax.set_ylabel("LCOH in €/MWh", fontsize=LABEL_FONTSIZE)
     ax.set_ylim(0, min(600, df["lcoh_DH_eur_mwh"].max()))
-    ax.set_title("Break-even: at what heat density does district heating compete?",
-                 fontsize=TITLE_FONTSIZE, fontweight="bold")
     ax.legend(fontsize=LEGEND_FONTSIZE, frameon=False)
+
+    # Abstand zwischen heutiger Dichte und Break-even als Faktor beschriften
+    _, be_ref = breakeven_heat_density(dh, min(competitors.values()))
+    if be_ref == be_ref and be_ref > q_now:
+        y_ar = ax.get_ylim()[1] * 0.84
+        ax.annotate("", xy=(q_now, y_ar), xytext=(be_ref, y_ar),
+                    arrowprops=dict(arrowstyle="<->", color=COLOR_LAST, lw=1.5))
+        ax.text((q_now + be_ref) / 2, y_ar * 1.03, f"{be_ref/q_now:.1f} ×",
+                ha="center", va="bottom", fontsize=LABEL_FONTSIZE,
+                fontweight="bold", color=COLOR_LAST)
     _ppt_style(ax)
     fig.tight_layout()
 
