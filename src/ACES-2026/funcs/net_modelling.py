@@ -368,6 +368,9 @@ def export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path, crs=TARGET_CRS):
     res['specific_p_loss_pa_per_m'] = (
         (res['p_from_bar'] - res['p_to_bar']) / (net.pipe['length_km'] * 1000) * 1e5
     )
+    # DN aus net.pipe hinzufügen (nach dimension_pipes befüllt)
+    if 'DN' in net.pipe.columns:
+        res['DN'] = net.pipe['DN']
 
     rows = []
     for vl_idx, rl_idx in pipe_pairs:
@@ -418,6 +421,29 @@ def _specific_pressure_loss(mdot_kg_per_s, d_m, kr_m, rho=978.0, mu=4.04e-4):
     return lam * rho * v ** 2 / (2 * d_m)
 
 
+def fix_pipe_orientations(net):
+    """Dreht Rohre mit negativem Massenstrom um, sodass from_junction immer
+    der Einströmknoten ist. Muss nach einem pipeflow-Lauf aufgerufen werden,
+    damit net.res_pipe.mdot_from_kg_per_s befüllt ist.
+
+    Rückgabe: Anzahl gedrehter Rohre.
+    """
+    n_flipped = 0
+    for idx in net.pipe.index:
+        mdot = float(net.res_pipe.at[idx, 'mdot_from_kg_per_s'])
+        if mdot < 0:
+            from_j = net.pipe.at[idx, 'from_junction']
+            to_j   = net.pipe.at[idx, 'to_junction']
+            net.pipe.at[idx, 'from_junction'] = to_j
+            net.pipe.at[idx, 'to_junction']   = from_j
+            n_flipped += 1
+    if n_flipped:
+        print(f"fix_pipe_orientations: {n_flipped} Rohr(e) gedreht.")
+    else:
+        print("fix_pipe_orientations: Alle Rohre korrekt orientiert.")
+    return n_flipped
+
+
 def dimension_pipes(net, parameters):
     """Dimensioniert alle Rohre im pandapipes-Netz stufenweise nach DN-Katalog.
 
@@ -462,6 +488,7 @@ def dimension_pipes(net, parameters):
 
         net.pipe.at[idx, 'diameter_m']      = chosen_d
         net.pipe.at[idx, 'alpha_w_per_m2k'] = new_alpha
+        net.pipe.at[idx, 'DN']             = chosen_dn
 
         rows.append({
             'pipe_idx':        idx,

@@ -107,8 +107,9 @@ peak_row = buildings_df.iloc[[peak_idx]]  # doppelte Klammer → DataFrame statt
 # print(f'Spitzenlast: {peak_row}')
 peak_result_df = run_timeseries(net, peak_row)
 
-# Rohre dimensionieren
-from funcs.net_modelling import dimension_pipes
+# Rohre mit negativem Massenstrom drehen, dann dimensionieren
+from funcs.net_modelling import fix_pipe_orientations, dimension_pipes
+fix_pipe_orientations(net)
 df_dimensionierung = dimension_pipes(net, parameters)
 
 export_res_pipe_gpkg(net, pipe_geoms, pipe_pairs, path="src/ACES-2026/Data/res_pipe_peak.gpkg")
