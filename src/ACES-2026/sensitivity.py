@@ -70,15 +70,13 @@ SCENARIOS = {
     "base": {"group": None, "scenario": "Reference case", "variant": "--"},
 
     # --- Szenario 1: Netzinvestitionskosten ---------------------------------
-    "pipe_cost_minus30": {"group": 1, "scenario": "Pipe investment cost",
-                          "variant": "700 EUR/m (-30 %)",
-                          "yaml": {"pipe_parameters.specific_invest_pipe": 700}},
+
     "pipe_cost_plus30":  {"group": 1, "scenario": "Pipe investment cost",
-                          "variant": "1,300 EUR/m (+30 %)",
-                          "yaml": {"pipe_parameters.specific_invest_pipe": 1300}},
-    "pipe_cost_carmen":  {"group": 1, "scenario": "Pipe investment cost",
-                          "variant": "400 EUR/m (literature)",
-                          "yaml": {"pipe_parameters.specific_invest_pipe": 400}},
+                          "variant": "520 EUR/m (+30 %)",
+                          "yaml": {"pipe_parameters.specific_invest_pipe": 520}},
+    "pipe_cost_minus30":  {"group": 1, "scenario": "Pipe investment cost",
+                          "variant": "280 EUR/m (-30 %)",
+                          "yaml": {"pipe_parameters.specific_invest_pipe": 280}},
 
     # --- Szenario 2: Waermepumpen-Investitionskosten ------------------------
     "hp_cost_minus30": {"group": 2, "scenario": "Heat pump investment cost",
