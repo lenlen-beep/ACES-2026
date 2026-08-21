@@ -11,7 +11,7 @@ LON       = 9.43
 CACHE_DIR = "src/ACES-2026/Data/weather_cache"
 
 #-------------------------------------------------------------------------
-# Einlesen Parameter (YAML)
+# Read parameters (YAML)
 #-------------------------------------------------------------------------
 
 def read_parameters(path):
@@ -20,7 +20,7 @@ def read_parameters(path):
 
 
 #-------------------------------------------------------------------------
-# Einlesen Strompreise (Großhandelsstrompreise 2024, dummy)
+# Read electricity prices (wholesale day-ahead prices 2024)
 #-------------------------------------------------------------------------
 
 def read_price_data(path, filename, load_data):
@@ -29,7 +29,7 @@ def read_price_data(path, filename, load_data):
 
     df_price.columns = ['Datum von', 'Deutschland/Luxemburg [€/MWh]']
 
-    # Spalte umbenennen
+    # Rename column
     df_price.rename(columns={'Datum von': 'Datum'}, inplace=True)
 
     df_price['Datum'] = pd.to_datetime(
@@ -37,12 +37,12 @@ def read_price_data(path, filename, load_data):
         format='%d.%m.%Y %H:%M'
     )
 
-    # Spalte umbenennen
+    # Rename column
     df_price.rename(columns={'Datum von': 'Datum'}, inplace=True)
 
-    # Auf den Zeitindex von load_data ausrichten; fehlende Preise interpolieren
+    # Align to load_data time index; interpolate missing prices
     df_price = df_price.set_index('Datum')
-    df_price = df_price.groupby(level=0).mean()  # doppelte Zeitstempel (Zeitumstellung) zusammenfassen
+    df_price = df_price.groupby(level=0).mean()  # merge duplicate timestamps (DST changeover)
     df_price = df_price.reindex(load_data.index)
     df_price = df_price.interpolate(method='time')
     df_price = df_price.reset_index().rename(columns={'index': 'Datum'})
@@ -53,7 +53,7 @@ def read_price_data(path, filename, load_data):
 
 
 #-------------------------------------------------------------------------
-# Einlesen Gaspreise (PEGAS THE DA Settlement 2024, täglich → stündlich)
+# Read gas prices (PEGAS THE DA settlement 2024, daily → hourly)
 #-------------------------------------------------------------------------
 
 def read_gas_price_data(path, filename, load_data):
@@ -61,7 +61,7 @@ def read_gas_price_data(path, filename, load_data):
     df['Date'] = pd.to_datetime(df['Date'])
     df = df[df['Date'].dt.year == 2024][['Date', 'Settlement']].set_index('Date')
 
-    # Täglich → stündlich hochskalieren und auf load_data-Index ausrichten
+    # Upsample daily → hourly and align to load_data index
     hourly_index = pd.date_range(start='2024-01-01', end='2024-12-31 23:00', freq='1h')
     df = df.reindex(hourly_index).interpolate(method='time')
     df = df.reindex(load_data.index).interpolate(method='time')
@@ -70,29 +70,7 @@ def read_gas_price_data(path, filename, load_data):
 
 
 #-------------------------------------------------------------------------
-# Einlesen der Solardaten (renewables.ninja, stündlich)
-#-------------------------------------------------------------------------
-
-def read_pv_data(path, filename, load_data):
-    df = pd.read_csv(path + filename, header=3)
-
-    df["time"] = pd.to_datetime(df["time"])
-    df = df[["time", "electricity"]]
-
-    # Jahr von 2019 auf 2024 setzen
-    df["time"] = df["time"].apply(lambda x: x.replace(year=2024))
-    df = df.set_index("time")
-    df = df.reindex(load_data.index)
-
-    # Fehlende Werte interpolieren
-    df["electricity"] = df["electricity"].interpolate(method="time")
-
-    return df["electricity"].values
-
-
-
-#-------------------------------------------------------------------------
-# Temperaturdaten laden
+# Load temperature data
 #-------------------------------------------------------------------------
 
 def load_temperature_data(year, lat=LAT, lon=LON, cache_dir=CACHE_DIR):

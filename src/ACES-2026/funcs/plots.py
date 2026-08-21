@@ -7,14 +7,14 @@ from funcs.energy_system_optimization import storage_volume_to_MWh
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
 
-# Farbpalette Energiesystem
-COLOR_WP       = "#00395B"   # EUF-Blau      — Wärmepumpe
-COLOR_GAS      = "#C17A2F"   # Amber         — Gaskessel (fossil)
-COLOR_SPEICHER = "#769D7B"   # Mint          — Kurzzeitspeicher
-COLOR_SAISONAL = "#2F6B4F"   # Dunkelgrün    — Saisonalspeicher
-COLOR_LAST     = "#1A1A1A"   # Fast-Schwarz  — Wärmebedarf (Referenz)
-COLOR_VERLUST  = "#A0463A"   # Gedämpftes Rot — Netzverluste
-COLOR_PV       = "#C8A84B"   # Gold          — PV / Sonne
+# Energy system colour palette
+COLOR_WP       = "#00395B"   # EUF blue      — heat pump
+COLOR_GAS      = "#C17A2F"   # Amber         — gas boiler (fossil)
+COLOR_SPEICHER = "#769D7B"   # Mint          — buffer storage
+COLOR_SAISONAL = "#2F6B4F"   # Dark green    — seasonal storage
+COLOR_LAST     = "#1A1A1A"   # Near-black    — heat demand (reference)
+COLOR_VERLUST  = "#A0463A"   # Muted red     — network losses
+COLOR_PV       = "#C8A84B"   # Gold          — PV / solar
 
 PLOTS_DIR = "src/ACES-2026/plots"
 
@@ -33,11 +33,11 @@ def _save(fig, filename):
     os.makedirs(PLOTS_DIR, exist_ok=True)
     path = os.path.join(PLOTS_DIR, filename)
     fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="white")
-    print(f"Plot gespeichert: {path}")
+    print(f"Plot saved: {path}")
 
 
 # --------------------------------------------------
-# Temperaturen plotten
+# Plot temperatures
 # --------------------------------------------------
 def plot_temperatures(temperature, station_id, show_plot=True):
     fig, ax = plt.subplots(figsize=(16, 9), facecolor="white")
@@ -53,7 +53,7 @@ def plot_temperatures(temperature, station_id, show_plot=True):
 
 
 # --------------------------------------------------
-# Strompreise plotten
+# Plot electricity prices
 # --------------------------------------------------
 def plot_prices(prices, show_plot=True):
     fig, ax = plt.subplots(figsize=(16, 9), facecolor="white")
@@ -69,7 +69,7 @@ def plot_prices(prices, show_plot=True):
 
 
 # --------------------------------------------------
-# Gaspreise plotten
+# Plot gas prices
 # --------------------------------------------------
 def plot_gas_prices(gas_prices, show_plot=True):
     fig, ax = plt.subplots(figsize=(16, 9), facecolor="white")
@@ -85,7 +85,7 @@ def plot_gas_prices(gas_prices, show_plot=True):
 
 
 # --------------------------------------------------
-# Plots des Energiesystems
+# Energy system plots
 # --------------------------------------------------
 
 def plot_energy_system_output_sorted(demand, P_wp_res, discharge_res, gas_boiler_res,
@@ -201,14 +201,14 @@ def plot_SOC(SOC_res, storage_cap_res, show_plot=True):
 
 
 # --------------------------------------------------
-# Netzverluste plotten
+# Plot network losses
 # --------------------------------------------------
 
 def plot_network_losses(result_df, show_plot=True,
                         out_path="src/ACES-2026/plots/netzverluste.png"):
-    C_GESAMT   = "#2F6B4F"   # Dunkelgrün — network feed-in
+    C_GESAMT   = "#2F6B4F"   # Dark green — network feed-in
     C_GEBAEUDE = "#769D7B"   # Mint       — building consumption
-    C_VERLUST  = "#A0463A"   # Rot        — network losses
+    C_VERLUST  = "#A0463A"   # Red        — network losses
 
     total_kw     = result_df['load_kW'].values
     consumer_kw  = result_df['consumer_load_kW'].values
@@ -255,7 +255,7 @@ def plot_network_losses(result_df, show_plot=True,
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor="white")
-    print(f"Plot gespeichert: {out_path}")
+    print(f"Plot saved: {out_path}")
 
     if show_plot:
         plt.show()
@@ -263,7 +263,7 @@ def plot_network_losses(result_df, show_plot=True,
 
 
 # --------------------------------------------------
-# PV plotten
+# Plot PV
 # --------------------------------------------------
 
 def plot_pv(pv_res, pv_feed_in_res, pv_cap_res, show_plot=True):
@@ -299,7 +299,7 @@ def plot_pv(pv_res, pv_feed_in_res, pv_cap_res, show_plot=True):
 
 
 # --------------------------------------------------
-# Saisonaler Speicher plotten
+# Plot seasonal storage
 # --------------------------------------------------
 
 def plot_seasonal_storage(seasonal_charge_res, seasonal_discharge_res, seasonal_soc_res,
@@ -333,7 +333,7 @@ def plot_seasonal_storage(seasonal_charge_res, seasonal_discharge_res, seasonal_
 
 
 # --------------------------------------------------
-# Stacked Area – Tagesmengen Energiesystem
+# Stacked area – daily energy totals per component
 # --------------------------------------------------
 
 def plot_energy_system_daily_stacked(demand, P_wp_res, gas_boiler_res,
@@ -363,14 +363,14 @@ def plot_energy_system_daily_stacked(demand, P_wp_res, gas_boiler_res,
     fig.suptitle("Daily heat supply – Energy system components",
                  fontsize=TITLE_FONTSIZE, fontweight="bold", color="#1A1A1A")
 
-    # Positive: Wärmelieferanten
+    # Positive: heat supply components
     ax.stackplot(days,
                  d_wp, d_gas, d_dis, d_sea_dis,
                  labels=["Heat pump", "Gas boiler",
                          "Buffer storage discharge", "Seasonal storage discharge"],
                  colors=[COLOR_WP, COLOR_GAS, COLOR_SPEICHER, COLOR_SAISONAL],
                  alpha=0.85)
-    # Negativ: Speicherladung (Überschussproduktion)
+    # Negative: storage charging (surplus production)
     ax.stackplot(days,
                  -d_ch, -d_sea_ch,
                  labels=["Buffer storage charging", "Seasonal storage charging"],
@@ -492,7 +492,7 @@ def plot_gas_boiler(gas_boiler_res, gas_boiler_capacity, show_plot=True):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 9), facecolor="white",
                                    gridspec_kw={"height_ratios": [2, 1]})
     fig.subplots_adjust(hspace=0.08)
-    # Oberes Panel: Zeitreihe
+    # Upper panel: time series
     ax1.fill_between(hours, gas, color=COLOR_GAS, alpha=0.75, label="Gas boiler output")
     #if gas_boiler_capacity > 0:
         #ax1.axhline(gas_boiler_capacity, color="#888888", linestyle="--", linewidth=1.2)
@@ -500,7 +500,7 @@ def plot_gas_boiler(gas_boiler_res, gas_boiler_capacity, show_plot=True):
     ax1.legend(fontsize=LEGEND_FONTSIZE, frameon=True, facecolor="white", edgecolor="#CCCCCC")
     _ppt_style(ax1)
 
-    # Unteres Panel: Dauerlinie (sorted)
+    # Lower panel: load duration curve (sorted)
     sorted_gas = np.sort(gas)[::-1]
     ax2.fill_between(hours, sorted_gas, color=COLOR_GAS, alpha=0.75, label="Duration curve")
     ax2.set_xlabel("Hours (sorted)", fontsize=LABEL_FONTSIZE)
