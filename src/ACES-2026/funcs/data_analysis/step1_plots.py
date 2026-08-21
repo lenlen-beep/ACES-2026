@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Plot-Bibliothek für Step 1 (volle Aalborg-Daten), im Stil von funcs/plots.py.
+"""Plot-Bibliothek für Step 1 (volle Aalborg-Daten).
 
-Enthält je Plot eine eigene plot_*-Funktion mit show_plot-Parameter, genau wie
-funcs/plots.py: einfache plt-Aufrufe (plot/hist/fill_between), Standard-
-Matplotlib-Schrift (kein Calibri), Grid explizit je Achse via ax.grid(True),
-plt.tight_layout()/constrained_layout und dieselben benannten Farben wie
-plots.py (steelblue, tomato, gold, tab:green, darkorange, gray, black).
+Enthält je Plot eine eigene plot_*-Funktion mit show_plot-Parameter. Stil
+(Serifenschrift, Schriftgrößen, Farbpalette, _ppt_style) kommt einheitlich aus
+plot_style.py, damit alle Abbildungen aus Step 1, Step 2 und dem
+Temperaturvergleich optisch identisch sind.
 
 Die Daten werden aus dem Cache geladen, den step1_full_heat_demand.py am Ende
-schreibt (step1_plot_cache.pkl). Direkt ausführen -> zeigt alle 4 Plots.
+schreibt (step1_plot_cache.pkl). Direkt ausführen -> zeigt alle 8 Plots.
 """
 
 import os
@@ -37,25 +36,18 @@ else:
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+from plot_style import (
+    COLOR_LAST, COLOR_VERLUST, PALETTE, LABEL_FONTSIZE, TICK_FONTSIZE,
+    LEGEND_FONTSIZE, TITLE_FONTSIZE, cycle_colors, _ppt_style, _save,
+)
+
 # Cache-Datei (von step1_full_heat_demand.py geschrieben, gleicher Ordner)
 _HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE_FILE = os.path.join(_HERE, "step1_plot_cache.pkl")
 
-# Ordner zum automatischen Speichern der Plots (gleiche Konvention wie funcs/plots.py)
-_ACES_DIR = os.path.dirname(os.path.dirname(_HERE))  # .../src/ACES-2026
-PLOTS_DIR = os.path.join(_ACES_DIR, "plots")
-
-
-def _save(fig, filename):
-    """Speichert die Figure als PNG im gemeinsamen Plots-Ordner."""
-    os.makedirs(PLOTS_DIR, exist_ok=True)
-    path = os.path.join(PLOTS_DIR, filename)
-    fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="white")
-    print(f"Plot gespeichert: {path}")
-
 
 # --------------------------------------------------
-# Anzeigenamen und Farben je Kategorie (benannte Farben wie plots.py)
+# Anzeigenamen und Farben je Kategorie (zyklische Palette aus plot_style)
 # --------------------------------------------------
 UNIT_TYPE_LABELS = {
     "apartment":           "Apartment",
@@ -65,18 +57,6 @@ UNIT_TYPE_LABELS = {
     "unclear":             "Unclear",
     "unbekannt":           "Unknown",
 }
-
-# Feste Farbe je unit_type (nach Kategorie-NAME verankert) – dieselben benannten
-# Farben, die auch in plots.py verwendet werden.
-UNIT_TYPE_COLORS = {
-    "single_family_house": "steelblue",
-    "terraced_house":      "tomato",
-    "apartment":           "tab:green",
-    "non_residential":     "gold",
-    "unclear":             "darkorange",
-    "unbekannt":           "gray",
-}
-UNIT_TYPE_FALLBACK = ["tab:purple", "tab:brown", "tab:cyan", "tab:olive"]
 
 # Reihenfolge und Anzeigenamen der Baujahr-Klassen
 BAUJAHR_ORDER = ["vor 1919", "1919–1948", "1949–1968", "1969–1978",
@@ -91,11 +71,7 @@ BAUJAHR_LABELS_EN = {
     "ab 2010":   "from 2010",
     "Unbekannt": "Unknown",
 }
-# Palette aus denselben benannten plots.py-Farben
-BAUJAHR_PALETTE = ["steelblue", "tomato", "gold", "tab:green",
-                   "darkorange", "gray", "tab:purple", "tab:brown"]
-BAUJAHR_COLORS = {bk: BAUJAHR_PALETTE[i % len(BAUJAHR_PALETTE)]
-                  for i, bk in enumerate(BAUJAHR_ORDER)}
+BAUJAHR_COLORS = {bk: c for bk, c in zip(BAUJAHR_ORDER, cycle_colors(len(BAUJAHR_ORDER)))}
 
 
 def unit_label(ut):
@@ -104,15 +80,9 @@ def unit_label(ut):
 
 
 def type_colors(unit_types):
-    """Farbe je unit_type: feste Zuordnung (UNIT_TYPE_COLORS), sonst Fallback."""
-    cmap, k = {}, 0
-    for t in unit_types:
-        if t in UNIT_TYPE_COLORS:
-            cmap[t] = UNIT_TYPE_COLORS[t]
-        else:
-            cmap[t] = UNIT_TYPE_FALLBACK[k % len(UNIT_TYPE_FALLBACK)]
-            k += 1
-    return cmap
+    """Farbe je unit_type: zyklisch aus der Palette vergeben (sortierte Reihenfolge)."""
+    colors = cycle_colors(len(unit_types))
+    return {t: c for t, c in zip(unit_types, colors)}
 
 
 # --------------------------------------------------
@@ -123,18 +93,20 @@ def _nan_fraction_per_hour(df_hourly):
     return df_hourly.isna().mean(axis=1) * 100
 
 
-def _add_nan_axis(ax_main, df_hourly, line_color="black"):
-    """Zweite Y-Achse mit Anteil fehlender Meter je Stunde (gestrichelt, schwarz
-    wie die Referenzlinien in plots.py). Gibt (Achse, Linien-Handle) zurück.
+def _add_nan_axis(ax_main, df_hourly, line_color=COLOR_VERLUST):
+    """Zweite Y-Achse mit Anteil fehlender Meter je Stunde (gestrichelt, in
+    COLOR_VERLUST als Kennfarbe für Datenausfall). Gibt (Achse, Linien-Handle) zurück.
     """
     nan_frac = _nan_fraction_per_hour(df_hourly)
     ax_r = ax_main.twinx()
     ax_r.fill_between(df_hourly.index, nan_frac.values, alpha=0.10, color=line_color)
     line, = ax_r.plot(df_hourly.index, nan_frac.values, color=line_color,
                       linewidth=0.9, linestyle="--",
-                      label="Share of meters without reading [%]")
-    ax_r.set_ylabel("Share of meters without reading [%]", fontsize=9)
+                      label="Share of meters without reading in %")
+    ax_r.set_ylabel("Share of meters without reading in %", fontsize=LABEL_FONTSIZE)
+    ax_r.tick_params(labelsize=TICK_FONTSIZE)
     ax_r.set_ylim(0, 100)
+    ax_r.spines["top"].set_visible(False)
     return ax_r, line
 
 
@@ -169,7 +141,7 @@ def _place_outside_labels(ax, entries, side, radius, min_gap_frac=0.36):
             text,
             xy=(cx * radius, cy * radius),           # Segment-Rand
             xytext=(x_text, yt),                     # entzerrte Position
-            ha=ha, va="center", fontsize=9, linespacing=1.4,
+            ha=ha, va="center", fontsize=10, linespacing=1.4,
             annotation_clip=False,
             arrowprops=dict(arrowstyle="-", color="gray", lw=0.8,
                             shrinkA=2, shrinkB=4,
@@ -186,7 +158,7 @@ def _pie_with_outside_small_pct(ax, values, labels, colors,
     """
     total = float(sum(values)) or 1.0
     wedges, _ = ax.pie(values, colors=colors, startangle=startangle,
-                       radius=radius, textprops={"fontsize": 9})
+                       radius=radius, textprops={"fontsize": 10})
 
     right, left = [], []
     for w, val, lab in zip(wedges, values, labels):
@@ -197,7 +169,7 @@ def _pie_with_outside_small_pct(ax, values, labels, colors,
             text = f"{lab}\n{pct:.1f}%"
         else:
             ax.text(0.6 * radius * cx, 0.6 * radius * cy, f"{pct:.1f}%",
-                    ha="center", va="center", fontsize=9)
+                    ha="center", va="center", fontsize=10)
             text = f"{lab}"
         (right if cx >= 0 else left).append((cy, cx, text))
 
@@ -217,7 +189,7 @@ def plot_annual_consumption_stats(meter_stats, show_plot=True):
     fig, axes = plt.subplots(1, 2, figsize=(13, 6))
     fig.subplots_adjust(left=0.07, right=0.965, top=0.82, bottom=0.12, wspace=0.28)
     fig.suptitle("Full Heat Demand Data for 2019 per Type of House",
-                 fontsize=14, fontweight="bold", y=0.96)
+                 fontsize=TITLE_FONTSIZE, fontweight="bold", y=0.96)
 
     # Plot 1: Histogramm Jahresverbrauch (kleinste Kategorie zuletzt/oben zeichnen)
     ax = axes[0]
@@ -232,11 +204,11 @@ def plot_annual_consumption_stats(meter_stats, show_plot=True):
             ax.hist(sub, bins=20, color=type_color[ut], alpha=1.0,
                     label=unit_label(ut), zorder=2 + z,
                     edgecolor="white", linewidth=0.3)
-    ax.set_xlabel("Annual Heat Demand [MWh/year]")
-    ax.set_ylabel("Number of Meters")
-    ax.set_title("Annual Heat Demand Distribution")
-    ax.grid(True)
-    ax.legend(fontsize=8)
+    ax.set_xlabel("Annual Heat Demand in MWh/year", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Number of Meters", fontsize=LABEL_FONTSIZE)
+    ax.set_title("Annual Heat Demand Distribution", fontsize=TITLE_FONTSIZE)
+    ax.legend(fontsize=LEGEND_FONTSIZE)
+    _ppt_style(ax)
 
     # Plot 2: Scatter Jahresverbrauch vs. Spitzenlast
     ax = axes[1]
@@ -248,11 +220,11 @@ def plot_annual_consumption_stats(meter_stats, show_plot=True):
             ax.scatter(grp["annual_kwh_2019"] / 1000, grp["peak_kw_2019"],
                        color=type_color[ut], s=18, alpha=1.0,
                        edgecolor="none", label=unit_label(ut))
-    ax.set_xlabel("Annual Heat Demand [MWh/year]")
-    ax.set_ylabel("Peak Load [kW]")
-    ax.set_title("Annual Heat Demand vs. Peak Load")
-    ax.grid(True)
-    ax.legend(fontsize=8)
+    ax.set_xlabel("Annual Heat Demand in MWh/year", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Peak Load in kW", fontsize=LABEL_FONTSIZE)
+    ax.set_title("Annual Heat Demand vs. Peak Load", fontsize=TITLE_FONTSIZE)
+    ax.legend(fontsize=LEGEND_FONTSIZE)
+    _ppt_style(ax)
 
     _save(fig, "step1_annual_consumption_stats.png")
     if show_plot:
@@ -281,7 +253,8 @@ def plot_meter_type_pie(meter_stats, show_plot=True):
         [type_color[t] for t in counts.index],
         radius=0.72,
     )
-    ax.set_title("Share of Meters per Type of House", fontweight="bold", pad=18)
+    ax.set_title("Share of Meters per Type of House", fontsize=TITLE_FONTSIZE,
+                 fontweight="bold", pad=18)
 
     _save(fig, "step1_meter_type_pie.png")
     if show_plot:
@@ -297,14 +270,13 @@ def plot_total_load(df_hourly, show_plot=True):
     nan_frac   = _nan_fraction_per_hour(df_hourly)
 
     fig, ax = plt.subplots(figsize=(16, 5), constrained_layout=True)
-    line_load, = ax.plot(df_hourly.index, total_heat.values, color="steelblue",
-                         linewidth=0.8, label="Total heat load [kW]")
-    ax.set_title("Total Heat Load in 2019", fontweight="bold")
-    ax.set_xlabel("Month")
-    ax.set_ylabel("Heat Load [kW]")
+    line_load, = ax.plot(df_hourly.index, total_heat.values, color=COLOR_LAST,
+                         linewidth=0.8, label="Total heat load in kW")
+    ax.set_title("Total Heat Load in 2019", fontsize=TITLE_FONTSIZE, fontweight="bold")
+    ax.set_xlabel("Month", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Heat Load in kW", fontsize=LABEL_FONTSIZE)
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
-    ax.grid(True)
     ax_r, line_nan = _add_nan_axis(ax, df_hourly)
     ax.annotate(
         f"NaN share total: {total_heat.isna().mean():.2%}\n"
@@ -313,11 +285,12 @@ def plot_total_load(df_hourly, show_plot=True):
         f"| Avg.: {np.nanmean(total_heat.values):.1f} kW",
         xy=(0.5, 0.98), xycoords="axes fraction", ha="center", va="top",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.85),
-        fontsize=8,
+        fontsize=10,
     )
     ax.legend([line_load, line_nan],
               [line_load.get_label(), line_nan.get_label()],
-              loc="upper center", bbox_to_anchor=(0.5, 0.78), fontsize=9)
+              loc="upper center", bbox_to_anchor=(0.5, 0.78), fontsize=LEGEND_FONTSIZE)
+    _ppt_style(ax)
 
     _save(fig, "step1_total_load.png")
     if show_plot:
@@ -341,7 +314,7 @@ def plot_load_by_type(df_hourly, df_meta, show_plot=True):
                                            gridspec_kw={"width_ratios": [3, 1.25]})
     fig.subplots_adjust(left=0.06, right=0.965, top=0.80, bottom=0.12, wspace=0.30)
     fig.suptitle("Full Heat Load per Type of House in 2019",
-                 fontsize=13, fontweight="bold", y=0.98)
+                 fontsize=TITLE_FONTSIZE, fontweight="bold", y=0.98)
 
     # Stack-Flächen
     bottom = np.zeros(len(df_hourly.index))
@@ -351,15 +324,16 @@ def plot_load_by_type(df_hourly, df_meta, show_plot=True):
                               alpha=0.85, color=color_map[t], label=unit_label(t))
         bottom += vals
     ax_r, line_nan = _add_nan_axis(ax_stack, df_hourly)
-    ax_stack.set_xlabel("Month")
-    ax_stack.set_ylabel("Heat Load [kW]")
+    ax_stack.set_xlabel("Month", fontsize=LABEL_FONTSIZE)
+    ax_stack.set_ylabel("Heat Load in kW", fontsize=LABEL_FONTSIZE)
     ax_stack.xaxis.set_major_locator(mdates.MonthLocator())
     ax_stack.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
-    ax_stack.grid(True)
     handles, labels = ax_stack.get_legend_handles_labels()
     handles.append(line_nan)
     labels.append(line_nan.get_label())
-    ax_stack.legend(handles, labels, fontsize=9, loc="upper right")
+    ax_stack.legend(handles, labels, fontsize=LEGEND_FONTSIZE,
+                    loc="upper center", bbox_to_anchor=(0.5, 1.0))
+    _ppt_style(ax_stack)
 
     # Pie: Anteil am Jahresenergiebedarf je Haustyp
     pie_labels, pie_vals, pie_cols = [], [], []
@@ -370,7 +344,7 @@ def plot_load_by_type(df_hourly, df_meta, show_plot=True):
             pie_vals.append(e)
             pie_cols.append(color_map[t])
     _pie_with_outside_small_pct(ax_pie, pie_vals, pie_labels, pie_cols, radius=0.85)
-    ax_pie.set_title("Share of Annual Heat Demand", pad=26)
+    ax_pie.set_title("Share of Annual Heat Demand", fontsize=TITLE_FONTSIZE, pad=26)
 
     _save(fig, "step1_load_by_type.png")
     if show_plot:
@@ -390,26 +364,32 @@ def plot_load_by_construction_year(df_hourly, df_meta, show_plot=True):
 
     fig, ax = plt.subplots(figsize=(16, 6), constrained_layout=True)
     bottom = np.zeros(len(df_hourly.index))
-    for bk in BAUJAHR_ORDER:
+    # 8 Baujahr-Klassen auf 7 Palettenfarben: Klasse 8 (Unbekannt) wiederholt
+    # COLOR_WP -> zur Unterscheidung von "vor 1919" mit Schraffur markiert.
+    for i, bk in enumerate(BAUJAHR_ORDER):
         if bk not in heat_by_baujahr:
             continue
         vals = np.nan_to_num(heat_by_baujahr[bk].to_numpy(), nan=0.0)
+        wrapped = i >= len(PALETTE)
         ax.fill_between(df_hourly.index, bottom, bottom + vals,
                         alpha=0.85, color=BAUJAHR_COLORS[bk],
+                        hatch="///" if wrapped else None,
+                        edgecolor="white" if wrapped else "none", linewidth=0,
                         label=BAUJAHR_LABELS_EN.get(bk, bk))
         bottom += vals
     ax_r, line_nan = _add_nan_axis(ax, df_hourly)
-    ax.set_title("Full Heat Load of 2019 per Construction Year", fontweight="bold")
-    ax.set_xlabel("Month")
-    ax.set_ylabel("Heat Load [kW]")
+    ax.set_title("Full Heat Load of 2019 per Construction Year",
+                 fontsize=TITLE_FONTSIZE, fontweight="bold")
+    ax.set_xlabel("Month", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Heat Load in kW", fontsize=LABEL_FONTSIZE)
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
-    ax.grid(True)
     handles, labels = ax.get_legend_handles_labels()
     handles.append(line_nan)
     labels.append(line_nan.get_label())
-    ax.legend(handles, labels, fontsize=8, loc="upper center", ncol=3,
+    ax.legend(handles, labels, fontsize=LEGEND_FONTSIZE, loc="upper center", ncol=3,
               title="Construction Year", framealpha=0.9)
+    _ppt_style(ax)
 
     _save(fig, "step1_load_by_construction_year.png")
     if show_plot:
@@ -429,17 +409,18 @@ def plot_total_load_moving_average(df_hourly, show_plot=True):
     ma_7d = total_heat.rolling(window=24 * 7, center=True, min_periods=24).mean()
 
     fig, ax = plt.subplots(figsize=(16, 5), constrained_layout=True)
-    ax.plot(df_hourly.index, total_heat.values, color="gray", alpha=0.35,
-            linewidth=0.6, label="Hourly total heat load [kW]")
-    ax.plot(df_hourly.index, ma_7d.values, color="steelblue", linewidth=1.6,
-            label="7-day moving average [kW]")
-    ax.set_title("Total Heat Load – 7-Day Moving Average", fontweight="bold")
-    ax.set_xlabel("Month")
-    ax.set_ylabel("Heat Load [kW]")
+    ax.plot(df_hourly.index, total_heat.values, color="#CCCCCC", alpha=0.6,
+            linewidth=0.6, label="Hourly total heat load in kW")
+    ax.plot(df_hourly.index, ma_7d.values, color=COLOR_LAST, linewidth=1.6,
+            label="7-day moving average in kW")
+    ax.set_title("Total Heat Load – 7-Day Moving Average",
+                 fontsize=TITLE_FONTSIZE, fontweight="bold")
+    ax.set_xlabel("Month", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Heat Load in kW", fontsize=LABEL_FONTSIZE)
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
-    ax.grid(True)
-    ax.legend(fontsize=9, loc="upper right")
+    ax.legend(fontsize=LEGEND_FONTSIZE, loc="upper right")
+    _ppt_style(ax)
 
     _save(fig, "step1_total_load_7day_ma.png")
     if show_plot:
@@ -455,12 +436,7 @@ SEASON_MONTHS = {
     "Summer": [6, 7, 8],
     "Autumn": [9, 10, 11],
 }
-SEASON_COLORS = {
-    "Winter": "steelblue",
-    "Spring": "tab:green",
-    "Summer": "gold",
-    "Autumn": "darkorange",
-}
+SEASON_COLORS = {season: c for season, c in zip(SEASON_MONTHS, cycle_colors(len(SEASON_MONTHS)))}
 
 
 def plot_diurnal_profiles_by_season(df_hourly, show_plot=True):
@@ -484,12 +460,13 @@ def plot_diurnal_profiles_by_season(df_hourly, show_plot=True):
         profile = sub.groupby("hour")["value"].mean()
         ax.plot(profile.index, profile.values, color=SEASON_COLORS[season],
                 linewidth=1.8, marker="o", markersize=3, label=season)
-    ax.set_title("Average Diurnal Heat Load Profile by Season", fontweight="bold")
-    ax.set_xlabel("Hour of Day")
-    ax.set_ylabel("Average Heat Load [kW]")
+    ax.set_title("Average Diurnal Heat Load Profile by Season",
+                 fontsize=TITLE_FONTSIZE, fontweight="bold")
+    ax.set_xlabel("Hour of Day", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Average Heat Load in kW", fontsize=LABEL_FONTSIZE)
     ax.set_xticks(range(0, 24, 2))
-    ax.grid(True)
-    ax.legend(fontsize=9)
+    ax.legend(fontsize=LEGEND_FONTSIZE, loc="upper right")
+    _ppt_style(ax)
 
     _save(fig, "step1_diurnal_profiles_by_season.png")
     if show_plot:

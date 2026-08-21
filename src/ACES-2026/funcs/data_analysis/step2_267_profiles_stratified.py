@@ -73,6 +73,11 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from scipy import stats as scipy_stats
 
+from plot_style import (
+    COLOR_LAST, COLOR_VERLUST, LABEL_FONTSIZE, TICK_FONTSIZE,
+    LEGEND_FONTSIZE, TITLE_FONTSIZE, cycle_colors, _ppt_style, _save,
+)
+
 # =============================================================================
 # 0) KONFIGURATION
 # =============================================================================
@@ -125,26 +130,9 @@ OUT_META = os.path.join(DATA_DIR, "selected_267_profiles_meta.csv")
 # stündliche kW-Werte. Keine echte meter_id / unit_type / annual_kwh.
 OUT_WIDE = os.path.join(DATA_DIR, "selected_267_profiles_2019_wide.csv")
 
-# Ordner zum automatischen Speichern der Plots (gleiche Konvention wie funcs/plots.py)
-PLOTS_DIR = os.path.join(_ACES_DIR, "plots")
+# Plot-Style (Farben, Serifenschrift, Schriftgrößen, PLOTS_DIR, _ppt_style): plot_style.py
 
-
-def _save(fig, filename):
-    """Speichert die Figure als PNG im gemeinsamen Plots-Ordner."""
-    os.makedirs(PLOTS_DIR, exist_ok=True)
-    path = os.path.join(PLOTS_DIR, filename)
-    fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="white")
-    print(f"Plot gespeichert: {path}")
-
-# Plot-Style
-plt.rcParams.update({
-    "figure.dpi": 110,
-    "axes.grid": True,
-    "grid.alpha": 0.25,
-    # Schrifttyp Calibri (Fallback auf DejaVu Sans, falls Calibri nicht installiert)
-    "font.family": "sans-serif",
-    "font.sans-serif": ["Calibri", "Carlito", "DejaVu Sans"],
-})
+plt.rcParams.update({"figure.dpi": 110})
 
 # Anzeigenamen für unit_type (Unterstriche raus, englische Bezeichnungen)
 UNIT_TYPE_LABELS = {
@@ -178,12 +166,7 @@ SEASON_MONTHS = {
     "Summer": [6, 7, 8],
     "Autumn": [9, 10, 11],
 }
-SEASON_COLORS = {
-    "Winter": "steelblue",
-    "Spring": "tab:green",
-    "Summer": "gold",
-    "Autumn": "darkorange",
-}
+SEASON_COLORS = {season: c for season, c in zip(SEASON_MONTHS, cycle_colors(len(SEASON_MONTHS)))}
 
 # =============================================================================
 # 1) HILFSFUNKTIONEN
@@ -370,12 +353,10 @@ def _nan_fraction_per_hour(df_hourly: pd.DataFrame) -> pd.Series:
 
 
 def _add_nan_axis(ax_main: plt.Axes, df_hourly: pd.DataFrame,
-                  line_color: str = "red"):
+                  line_color: str = COLOR_VERLUST):
     """
-    Zweite Y-Achse mit Anteil fehlender Meter je Stunde.
-
-    Achsenzahlen und Achsentitel sind schwarz; die gestrichelte Linie behält ihre
-    Farbe (Standard rot, in Plot 6 schwarz wegen des bunten Hintergrunds).
+    Zweite Y-Achse mit Anteil fehlender Meter je Stunde (gestrichelt, in
+    COLOR_VERLUST als Kennfarbe für Datenausfall).
     Gibt die zweite Achse und das Linien-Handle (für die Legende) zurück.
     """
     nan_frac = _nan_fraction_per_hour(df_hourly)
@@ -383,10 +364,11 @@ def _add_nan_axis(ax_main: plt.Axes, df_hourly: pd.DataFrame,
     ax_r.fill_between(df_hourly.index, nan_frac.values, alpha=0.12, color=line_color)
     line, = ax_r.plot(df_hourly.index, nan_frac.values, color=line_color,
                       linewidth=0.9, linestyle="--",
-                      label="Share of meters without reading [%]")
-    ax_r.set_ylabel("Share of meters without reading [%]", color="black", fontsize=9)
-    ax_r.tick_params(axis="y", labelcolor="black")
+                      label="Share of meters without reading in %")
+    ax_r.set_ylabel("Share of meters without reading in %", fontsize=LABEL_FONTSIZE)
+    ax_r.tick_params(axis="y", labelsize=TICK_FONTSIZE)
     ax_r.set_ylim(0, 100)
+    ax_r.spines["top"].set_visible(False)
     return ax_r, line
 
 
@@ -416,7 +398,7 @@ def _pie_with_outside_small_pct(ax: plt.Axes, values, labels, colors,
 
     wedges, _ = ax.pie(values, labels=pie_labels, colors=colors,
                        startangle=startangle, radius=radius,
-                       labeldistance=1.12, textprops={"fontsize": 9})
+                       labeldistance=1.12, textprops={"fontsize": 10})
 
     for w, val, lab, small in zip(wedges, values, labels, is_small):
         pct = (val / total * 100) if total > 0 else 0.0
@@ -440,7 +422,7 @@ def _pie_with_outside_small_pct(ax: plt.Axes, values, labels, colors,
                 # horizontaler Versatz reduziert -> kürzere horizontale Strecke,
                 # Beschriftung näher am Kreis; Höhe (y) bleibt für Abstand erhalten.
                 xytext=(side * 0.80 * radius, y * 1.30 * radius),
-                ha=ha, va="center", fontsize=9, linespacing=1.4,
+                ha=ha, va="center", fontsize=10, linespacing=1.4,
                 annotation_clip=False,
                 arrowprops=dict(arrowstyle="-", color="black", lw=0.8,
                                 shrinkA=2, shrinkB=6,
@@ -448,7 +430,7 @@ def _pie_with_outside_small_pct(ax: plt.Axes, values, labels, colors,
             )
         else:
             ax.text(0.6 * radius * x, 0.6 * radius * y, f"{pct:.1f}%",
-                    ha="center", va="center", fontsize=9)
+                    ha="center", va="center", fontsize=10)
     return wedges
 
 
@@ -458,13 +440,12 @@ def plot_annual_consumption_stats(meter_stats: pd.DataFrame, n_sample: int) -> N
     Identisch zu Step 1, aber für die n_sample ausgewählten Meter.
     """
     unit_types_sorted = sorted(meter_stats["unit_type"].fillna("unbekannt").unique().tolist())
-    palette    = ["#4CAF50", "#2196F3", "#FF9800", "#9C27B0", "#E91E63", "#00BCD4", "#607D8B"]
-    type_color = {t: palette[i % len(palette)] for i, t in enumerate(unit_types_sorted)}
+    type_color = {t: c for t, c in zip(unit_types_sorted, cycle_colors(len(unit_types_sorted)))}
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 6))
     fig.subplots_adjust(left=0.07, right=0.965, top=0.82, bottom=0.12, wspace=0.28)
     fig.suptitle("Reduced Heat Demand Data for 2019 per type of house",
-                 fontsize=14, fontweight="bold", y=0.96)
+                 fontsize=TITLE_FONTSIZE, fontweight="bold", y=0.96)
 
     # Plot 1: Histogramm Jahresverbrauch
     # Reihenfolge nach Anzahl absteigend -> kleinste Kategorie (z.B. Apartment/grün)
@@ -481,10 +462,15 @@ def plot_annual_consumption_stats(meter_stats: pd.DataFrame, n_sample: int) -> N
             ax.hist(sub, bins=20, color=type_color[ut], alpha=1.0,
                     label=unit_label(ut), zorder=2 + z,
                     edgecolor="white", linewidth=0.3)
-    ax.set_xlabel("Annual Heat Demand [MWh/year]")
-    ax.set_ylabel("Number of Meters")
-    ax.set_title("Annual Heat Demand Distribution")
-    ax.legend(fontsize=8)
+    ax.set_xlabel("Annual Heat Demand in MWh/year", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Number of Meters", fontsize=LABEL_FONTSIZE)
+    ax.set_title("Annual Heat Demand Distribution", fontsize=TITLE_FONTSIZE)
+    ax.legend(fontsize=LEGEND_FONTSIZE, loc="center right")
+    _ppt_style(ax)
+    # x-Achse rechts verlängert (reiner Leerraum) -> Legende rückt sichtbar von
+    # den hohen Balken um x=15-25 MWh weg, statt sie zu überdecken.
+    x0, x1 = ax.get_xlim()
+    ax.set_xlim(x0, x1 + 0.55 * (x1 - x0))
 
     # Plot 2: Scatter Jahresverbrauch vs. Spitzenlast (Punkte voll ausgefüllt)
     ax = axes[1]
@@ -496,10 +482,13 @@ def plot_annual_consumption_stats(meter_stats: pd.DataFrame, n_sample: int) -> N
             ax.scatter(grp["annual_kwh_2019"] / 1000, grp["peak_kw_2019"],
                        color=type_color[ut], s=18, alpha=1.0,
                        edgecolor="none", label=unit_label(ut))
-    ax.set_xlabel("Annual Heat Demand [MWh/year]")
-    ax.set_ylabel("Peak Load [kW]")
-    ax.set_title("Annual Heat Demand vs. Peak Load")
-    ax.legend(fontsize=8)
+    ax.set_xlabel("Annual Heat Demand in MWh/year", fontsize=LABEL_FONTSIZE)
+    ax.set_ylabel("Peak Load in kW", fontsize=LABEL_FONTSIZE)
+    ax.set_title("Annual Heat Demand vs. Peak Load", fontsize=TITLE_FONTSIZE)
+    ax.legend(fontsize=LEGEND_FONTSIZE, loc="upper right")
+    _ppt_style(ax)
+    x0, x1 = ax.get_xlim()
+    ax.set_xlim(x0, x1 + 0.4 * (x1 - x0))
 
     _save(fig, "step2_annual_consumption_stats.png")
     plt.show()
@@ -512,8 +501,7 @@ def plot_meter_type_pie(meter_stats: pd.DataFrame, n_sample: int) -> None:
     (z.B. im Bericht, neben dem Step-1-Pendant) verwendet werden kann.
     """
     unit_types_sorted = sorted(meter_stats["unit_type"].fillna("unbekannt").unique().tolist())
-    palette    = ["#4CAF50", "#2196F3", "#FF9800", "#9C27B0", "#E91E63", "#00BCD4", "#607D8B"]
-    type_color = {t: palette[i % len(palette)] for i, t in enumerate(unit_types_sorted)}
+    type_color = {t: c for t, c in zip(unit_types_sorted, cycle_colors(len(unit_types_sorted)))}
 
     fig, ax = plt.subplots(figsize=(7, 7))
     counts = (
@@ -529,7 +517,8 @@ def plot_meter_type_pie(meter_stats: pd.DataFrame, n_sample: int) -> None:
         group_small_labels=True,     # "Apartment" + Prozentzahl gruppiert nach außen
     )
     # pad: zusätzlicher Abstand zwischen Pie-Titel und der außenliegenden Prozentzahl
-    ax.set_title("Share of Meters per Type of House", fontweight="bold", pad=18)
+    ax.set_title("Share of Meters per Type of House", fontsize=TITLE_FONTSIZE,
+                 fontweight="bold", pad=18)
 
     _save(fig, "step2_meter_type_pie.png")
     plt.show()
@@ -567,18 +556,17 @@ def plot_series_panels(
             heat_by_baujahr[bk] = df_hourly[cols].sum(axis=1, min_count=1)
 
     types_sorted = sorted(heat_by_type.keys())
-    palette      = ["#4CAF50", "#2196F3", "#FF9800", "#9C27B0", "#E91E63", "#00BCD4", "#607D8B"]
-    color_map    = {t: palette[i % len(palette)] for i, t in enumerate(types_sorted)}
-    b_palette    = ["#7B1FA2", "#C62828", "#EF6C00", "#F9A825", "#558B2F", "#0277BD", "#00838F", "#9E9E9E"]
-    b_color      = {bk: b_palette[i % len(b_palette)] for i, bk in enumerate(BAUJAHR_ORDER)}
+    color_map    = {t: c for t, c in zip(types_sorted, cycle_colors(len(types_sorted)))}
+    b_color      = {bk: c for bk, c in zip(BAUJAHR_ORDER, cycle_colors(len(BAUJAHR_ORDER)))}
 
     # --- Plot 4: Gesamtlast + NaN-Anteil ---
     fig1, ax1 = plt.subplots(figsize=(16, 5), constrained_layout=True)
-    line_load, = ax1.plot(df_hourly.index, total_heat.values, color="#1f77b4",
-                          linewidth=0.9, label="Total heat load [kW]")
-    ax1.set_title("Total Heat Load of Reduced Profile in 2019", fontweight="bold")
-    ax1.set_xlabel("Month")
-    ax1.set_ylabel("Heat Load [kW]")
+    line_load, = ax1.plot(df_hourly.index, total_heat.values, color=COLOR_LAST,
+                          linewidth=0.9, label="Total heat load in kW")
+    ax1.set_title("Total Heat Load of Reduced Profile in 2019",
+                  fontsize=TITLE_FONTSIZE, fontweight="bold")
+    ax1.set_xlabel("Month", fontsize=LABEL_FONTSIZE)
+    ax1.set_ylabel("Heat Load in kW", fontsize=LABEL_FONTSIZE)
     ax1.xaxis.set_major_locator(mdates.MonthLocator())
     ax1.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
     ax_r1, line_nan = _add_nan_axis(ax1, df_hourly)
@@ -590,11 +578,12 @@ def plot_series_panels(
         f"| Avg.: {np.nanmean(total_heat.values):.1f} kW",
         xy=(0.5, 0.98), xycoords="axes fraction", ha="center", va="top",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.85),
-        fontsize=8,
+        fontsize=10,
     )
     ax1.legend([line_load, line_nan],
                [line_load.get_label(), line_nan.get_label()],
-               loc="upper center", bbox_to_anchor=(0.5, 0.78), fontsize=9)
+               loc="upper center", bbox_to_anchor=(0.5, 0.78), fontsize=LEGEND_FONTSIZE)
+    _ppt_style(ax1)
     _save(fig1, "step2_total_load.png")
     plt.show()
 
@@ -605,7 +594,7 @@ def plot_series_panels(
     # größerer Abstand zwischen Hauptüberschrift (y) und Diagramm-Überschriften (top).
     fig2.subplots_adjust(left=0.06, right=0.965, top=0.80, bottom=0.12, wspace=0.30)
     fig2.suptitle("Reduced Heat Load per Type of House in 2019",
-                  fontsize=13, fontweight="bold", y=0.98)
+                  fontsize=TITLE_FONTSIZE, fontweight="bold", y=0.98)
     bottom = np.zeros(len(df_hourly.index))
     for t in types_sorted:
         vals = np.nan_to_num(heat_by_type[t].to_numpy(), nan=0.0)
@@ -613,14 +602,17 @@ def plot_series_panels(
                           alpha=0.85, color=color_map[t], label=unit_label(t))
         bottom += vals
     ax_r2, line_nan2 = _add_nan_axis(ax2a, df_hourly)
-    ax2a.set_xlabel("Month")
-    ax2a.set_ylabel("Heat Load [kW]")
+    ax2a.set_xlabel("Month", fontsize=LABEL_FONTSIZE)
+    ax2a.set_ylabel("Heat Load in kW", fontsize=LABEL_FONTSIZE)
     ax2a.xaxis.set_major_locator(mdates.MonthLocator())
     ax2a.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
     handles, labels = ax2a.get_legend_handles_labels()
     handles.append(line_nan2)
     labels.append(line_nan2.get_label())
-    ax2a.legend(handles, labels, fontsize=9, loc="upper right")
+    # Zentriert über dem Sommer-Tief der Stack-Fläche -> verdeckt am wenigsten Daten
+    ax2a.legend(handles, labels, fontsize=LEGEND_FONTSIZE,
+                loc="upper center", bbox_to_anchor=(0.5, 1.0))
+    _ppt_style(ax2a)
 
     pie_labels, pie_vals, pie_cols = [], [], []
     for t in types_sorted:
@@ -635,7 +627,7 @@ def plot_series_panels(
         group_small_labels=True,     # kleine Segmente: Bezeichnung + % seitlich versetzt
     )
     # pad: Titel nach oben, damit über dem größeren Pie genug Abstand bleibt
-    ax2b.set_title("Share of Annual Heat Demand", pad=26)
+    ax2b.set_title("Share of Annual Heat Demand", fontsize=TITLE_FONTSIZE, pad=26)
     _save(fig2, "step2_load_by_type.png")
     plt.show()
 
@@ -650,11 +642,11 @@ def plot_series_panels(
                          alpha=0.85, color=b_color[bk],
                          label=BAUJAHR_LABELS_EN.get(bk, bk))
         bottom += vals
-    # NaN-Linie schwarz, da Rot auf dem bunten Hintergrund nicht sichtbar ist
-    ax_r3, line_nan3 = _add_nan_axis(ax3, df_hourly, line_color="black")
-    ax3.set_title("Reduced Heat Load of 2019 per Construction Year", fontweight="bold")
-    ax3.set_xlabel("Month")
-    ax3.set_ylabel("Heat Load [kW]")
+    ax_r3, line_nan3 = _add_nan_axis(ax3, df_hourly)
+    ax3.set_title("Reduced Heat Load of 2019 per Construction Year",
+                  fontsize=TITLE_FONTSIZE, fontweight="bold")
+    ax3.set_xlabel("Month", fontsize=LABEL_FONTSIZE)
+    ax3.set_ylabel("Heat Load in kW", fontsize=LABEL_FONTSIZE)
     ax3.xaxis.set_major_locator(mdates.MonthLocator())
     ax3.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
     handles, labels = ax3.get_legend_handles_labels()
@@ -662,25 +654,27 @@ def plot_series_panels(
     labels.append(line_nan3.get_label())
     # Legende in die obere Mitte (über das Sommer-Tief), mehrspaltig und kompakt,
     # damit sie die Stack-Flächen (Winterspitzen links/rechts) nicht verdeckt.
-    ax3.legend(handles, labels, fontsize=8, loc="upper center", ncol=3,
+    ax3.legend(handles, labels, fontsize=LEGEND_FONTSIZE, loc="upper center", ncol=3,
                title="Construction Year", framealpha=0.9)
+    _ppt_style(ax3)
     _save(fig3, "step2_load_by_construction_year.png")
     plt.show()
 
     # --- Plot 7: Gesamtlast – 7-Tage gleitender Mittelwert ---
     ma_7d = total_heat.rolling(window=24 * 7, center=True, min_periods=24).mean()
     fig4, ax4 = plt.subplots(figsize=(16, 5), constrained_layout=True)
-    ax4.plot(df_hourly.index, total_heat.values, color="gray", alpha=0.35,
-             linewidth=0.6, label="Hourly total heat load [kW]")
-    ax4.plot(df_hourly.index, ma_7d.values, color="#1f77b4", linewidth=1.6,
-             label="7-day moving average [kW]")
+    ax4.plot(df_hourly.index, total_heat.values, color="#CCCCCC", alpha=0.6,
+             linewidth=0.6, label="Hourly total heat load in kW")
+    ax4.plot(df_hourly.index, ma_7d.values, color=COLOR_LAST, linewidth=1.6,
+             label="7-day moving average in kW")
     ax4.set_title("Total Heat Load of Reduced Profile – 7-Day Moving Average",
-                  fontweight="bold")
-    ax4.set_xlabel("Month")
-    ax4.set_ylabel("Heat Load [kW]")
+                  fontsize=TITLE_FONTSIZE, fontweight="bold")
+    ax4.set_xlabel("Month", fontsize=LABEL_FONTSIZE)
+    ax4.set_ylabel("Heat Load in kW", fontsize=LABEL_FONTSIZE)
     ax4.xaxis.set_major_locator(mdates.MonthLocator())
     ax4.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
-    ax4.legend(fontsize=9, loc="upper right")
+    ax4.legend(fontsize=LEGEND_FONTSIZE, loc="upper right")
+    _ppt_style(ax4)
     _save(fig4, "step2_total_load_7day_ma.png")
     plt.show()
 
@@ -697,11 +691,12 @@ def plot_series_panels(
         ax5.plot(profile.index, profile.values, color=SEASON_COLORS[season],
                  linewidth=1.8, marker="o", markersize=3, label=season)
     ax5.set_title("Average Diurnal Heat Load Profile by Season (Reduced Profile)",
-                  fontweight="bold")
-    ax5.set_xlabel("Hour of Day")
-    ax5.set_ylabel("Average Heat Load [kW]")
+                  fontsize=TITLE_FONTSIZE, fontweight="bold")
+    ax5.set_xlabel("Hour of Day", fontsize=LABEL_FONTSIZE)
+    ax5.set_ylabel("Average Heat Load in kW", fontsize=LABEL_FONTSIZE)
     ax5.set_xticks(range(0, 24, 2))
-    ax5.legend(fontsize=9)
+    ax5.legend(fontsize=LEGEND_FONTSIZE, loc="upper right")
+    _ppt_style(ax5)
     _save(fig5, "step2_diurnal_profiles_by_season.png")
     plt.show()
 
