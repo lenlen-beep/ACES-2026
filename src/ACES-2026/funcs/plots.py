@@ -103,8 +103,6 @@ def plot_energy_system_output_sorted(demand, P_wp_res, discharge_res, gas_boiler
                 label="Seasonal storage discharge")
     ax.set_xlabel("Hours (sorted by heat demand)", fontsize=LABEL_FONTSIZE)
     ax.set_ylabel("Power in MW", fontsize=LABEL_FONTSIZE)
-    #ax.set_title("Ordered annual load duration curve – Heat supply",
-                 #fontsize=TITLE_FONTSIZE, fontweight="bold")
     ax.legend(fontsize=LEGEND_FONTSIZE, frameon=False)
     _ppt_style(ax)
     fig.tight_layout()
@@ -125,8 +123,6 @@ def plot_charge_discharge_process(charge_res, discharge_res, SOC_res, storage_ca
                      color=COLOR_SPEICHER, alpha=0.8, label="Discharging (−)")
     ax1.axhline(0, color="#1A1A1A", linewidth=0.8)
     ax1.set_ylabel("Power in MW", fontsize=LABEL_FONTSIZE)
-    #ax1.set_title("Buffer storage – Charging and discharging",
-                  #fontsize=TITLE_FONTSIZE, fontweight="bold")
     ax1.legend(fontsize=LEGEND_FONTSIZE, frameon=True, facecolor="white",
                edgecolor="#CCCCCC", loc="upper left")
     _ppt_style(ax1)
@@ -169,7 +165,6 @@ def plot_load_w_components(P_wp_res, discharge_res, gas_boiler_res, demand,
     ax.plot(hours, demand, color=COLOR_LAST, linewidth=1.5, label="Heat demand")
     ax.set_xlabel("Time in h", fontsize=LABEL_FONTSIZE)
     ax.set_ylabel("Power in MW", fontsize=LABEL_FONTSIZE)
-    #ax.set_title("Heat supply by component", fontsize=TITLE_FONTSIZE, fontweight="bold")
     ax.legend(fontsize=LEGEND_FONTSIZE, frameon=True, facecolor="white",
               edgecolor="#CCCCCC", loc="upper center")
     _ppt_style(ax)
@@ -189,7 +184,6 @@ def plot_SOC(SOC_res, storage_cap_res, show_plot=True):
                    label=f"Capacity {storage_MWh:.1f} MWh")
     ax.set_xlabel("Time in h", fontsize=LABEL_FONTSIZE)
     ax.set_ylabel("Energy in MWh", fontsize=LABEL_FONTSIZE)
-    #ax.set_title("State of Charge – Buffer storage", fontsize=TITLE_FONTSIZE, fontweight="bold")
     ax.legend(fontsize=LEGEND_FONTSIZE, frameon=False, loc='upper right')
     ax.set_ylim(top=3)
     _ppt_style(ax)
@@ -222,14 +216,6 @@ def plot_network_losses(result_df, show_plot=True,
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 9), sharex=True, facecolor="white")
     fig.subplots_adjust(hspace=0.08, top=0.88, bottom=0.10, left=0.09, right=0.97)
-
-    #fig.suptitle("Heat losses in the district heating network",
-                 #fontsize=20, fontweight="bold", color="#1A1A1A")
-    #fig.text(0.5, 0.91,
-             #f"Annual total: {jahres_MWh:,.0f} MWh/a  ·  "
-             #f"Network losses: {verlust_MWh:,.0f} MWh/a  ·  Share: {anteil_pct:.1f} %",
-             #ha="center", fontsize=LEGEND_FONTSIZE, color="#555555")
-
     ax1.plot(hours, total_kw / 1000, color=C_GESAMT,   linewidth=1.5, label="Network feed-in")
     ax1.plot(hours, consumer_kw / 1000, color=C_GEBAEUDE, linewidth=1.5, label="Building consumption")
     ax1.plot(hours, loss_kw / 1000, color=C_VERLUST, linewidth=1.2, label="Network losses")
@@ -242,8 +228,6 @@ def plot_network_losses(result_df, show_plot=True,
     ax1.margins(x=0)
 
     ax2.plot(hours, loss_kw / 1000, color=C_VERLUST, linewidth=1.0)
-    #ax2.axhline(loss_kw.mean() / 1000, color="#1A1A1A", linestyle="--",
-                #linewidth=1.2, label=f"Mean  {loss_kw.mean()/1000:.3f} MW")
     ax2.set_ylabel("Network losses in MW", fontsize=LABEL_FONTSIZE)
     ax2.set_xlabel("Time in h", fontsize=LABEL_FONTSIZE)
     ax2.legend(fontsize=LEGEND_FONTSIZE, frameon=False)
@@ -277,8 +261,6 @@ def plot_pv(pv_res, pv_feed_in_res, pv_cap_res, show_plot=True):
     ax1.plot(pv_self_use,    color=COLOR_WP,  linewidth=0.8, label="Self-consumption")
     ax1.plot(pv_feed_in_res, color=COLOR_GAS, linewidth=0.8, label="Grid feed-in")
     ax1.set_ylabel("Power in MW", fontsize=LABEL_FONTSIZE)
-    #ax1.set_title(f"PV system",
-                  #fontsize=TITLE_FONTSIZE, fontweight="bold")
     ax1.legend(fontsize=LEGEND_FONTSIZE, frameon=False)
     _ppt_style(ax1)
 
@@ -287,7 +269,6 @@ def plot_pv(pv_res, pv_feed_in_res, pv_cap_res, show_plot=True):
                      label="PV duration curve")
     ax2.set_xlabel("Hours (sorted)", fontsize=LABEL_FONTSIZE)
     ax2.set_ylabel("Power in MW", fontsize=LABEL_FONTSIZE)
-    #ax2.set_title("PV load duration curve", fontsize=TITLE_FONTSIZE - 1)
     ax2.legend(fontsize=LEGEND_FONTSIZE, frameon=False)
     _ppt_style(ax2)
 
@@ -313,13 +294,10 @@ def plot_seasonal_storage(seasonal_charge_res, seasonal_discharge_res, seasonal_
     ax1.plot(seasonal_charge_res,    color=COLOR_SAISONAL, linewidth=0.8, label="Charging")
     ax1.plot(seasonal_discharge_res, color=COLOR_GAS,      linewidth=0.8, label="Discharging")
     ax1.set_ylabel("Power in MW", fontsize=LABEL_FONTSIZE)
-    #ax1.set_title("Seasonal storage, Charging and discharging",
-                  #fontsize=TITLE_FONTSIZE, fontweight="bold")
     ax1.legend(fontsize=LEGEND_FONTSIZE, frameon=False)
     _ppt_style(ax1)
 
     ax2.plot(seasonal_soc_res, color=COLOR_SAISONAL, linewidth=0.8, label="SOC")
-    #if seasonal_MWh > 0:
     ax2.set_xlabel("Time in h", fontsize=LABEL_FONTSIZE)
     ax2.set_ylabel("Energy in MWh", fontsize=LABEL_FONTSIZE)
     ax2.legend(fontsize=LEGEND_FONTSIZE, frameon=False)
@@ -494,8 +472,6 @@ def plot_gas_boiler(gas_boiler_res, gas_boiler_capacity, show_plot=True):
     fig.subplots_adjust(hspace=0.08)
     # Upper panel: time series
     ax1.fill_between(hours, gas, color=COLOR_GAS, alpha=0.75, label="Gas boiler output")
-    #if gas_boiler_capacity > 0:
-        #ax1.axhline(gas_boiler_capacity, color="#888888", linestyle="--", linewidth=1.2)
     ax1.set_ylabel("Power in MW", fontsize=LABEL_FONTSIZE)
     ax1.legend(fontsize=LEGEND_FONTSIZE, frameon=True, facecolor="white", edgecolor="#CCCCCC")
     _ppt_style(ax1)
